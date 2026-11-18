@@ -36,10 +36,10 @@ html, body {
 }
 input, textarea { -webkit-user-select: text; user-select: text; }
 body {
-  /* dusk sky: deep violet above, warm amber glow at the lotus pond below */
+  /* fresh sunrise: blue morning sky, warming to gold and peach at the horizon */
   background:
-    radial-gradient(120vmax 70vmax at 50% 108%, #c97a2a 0%, rgba(201, 122, 42, 0) 62%),
-    linear-gradient(180deg, #120a1e 0%, #241436 40%, #4a2440 68%, #8a4a2a 100%);
+    radial-gradient(90vmax 60vmax at 50% 0%, rgba(255, 244, 205, .55) 0%, rgba(255, 220, 150, 0) 60%),
+    linear-gradient(180deg, #1f2f6b 0%, #4b4f94 28%, #9a6aa8 52%, #e79a7a 74%, #f7c48a 100%);
   background-attachment: fixed;
   min-height: 100%;
 }
@@ -333,24 +333,35 @@ button { font: inherit; }
 .scene { position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
 
 .sun {
-  position: absolute; top: -22vmin; left: 50%; width: 90vmin; height: 90vmin; margin-left: -45vmin;
+  position: absolute; top: -26vmin; left: 50%; width: 80vmin; height: 80vmin; margin-left: -40vmin;
   border-radius: 50%;
-  background: radial-gradient(circle, #fff7da 0%, #ffd77a 14%, rgba(255, 170, 60, .55) 35%, rgba(255, 140, 40, .08) 60%, transparent 70%);
+  background: radial-gradient(circle, #ffffff 0%, #fff6d6 10%, #ffd77a 22%, rgba(255, 178, 80, .5) 40%, rgba(255, 150, 60, .1) 62%, transparent 72%);
   animation: sunPulse 7s ease-in-out infinite;
 }
+/* sunbeams fanning out from the sun, each one swaying gently */
+.beams { position: absolute; inset: 0; }
+.beams i {
+  position: absolute; top: -26vmin; left: 50%;
+  width: 14vmin; height: 150vmin; margin-left: -7vmin;
+  transform-origin: 50% 0;
+  background: linear-gradient(180deg, rgba(255, 244, 205, .42), rgba(255, 226, 160, .14) 45%, transparent 80%);
+  filter: blur(3px);
+  transform: rotate(var(--a));
+  animation: beamSway 9s ease-in-out var(--dl, 0s) infinite alternate;
+}
+/* sunlit clouds: a soft cloud body with a golden rim on the side facing the sun */
 .cloud {
-  position: absolute; width: 70vw; height: 16vh; border-radius: 50%;
-  background: radial-gradient(ellipse at 50% 55%, rgba(255, 214, 140, .5), rgba(255, 160, 70, .16) 50%, transparent 72%);
-  filter: blur(8px);
-  animation: drift 26s ease-in-out infinite alternate;
+  position: absolute; width: 70vw; height: auto; aspect-ratio: 400 / 160; overflow: visible;
+  filter: drop-shadow(0 0 18px rgba(255, 210, 120, .6));
+  animation: drift 26s ease-in-out infinite alternate, cloudGlow 8s ease-in-out infinite;
 }
 .cloud-a { top: 50%; left: -20vw; }
 .cloud-b { top: 66%; right: -25vw; width: 80vw; animation-duration: 34s; }
-.cloud-c { top: 34%; left: 20vw; width: 55vw; height: 12vh; animation-duration: 22s; }
+.cloud-c { top: 34%; left: 20vw; width: 55vw; animation-duration: 22s; }
 
 .pond {
-  position: absolute; left: 0; right: 0; bottom: 0; height: 34vh;
-  background: radial-gradient(ellipse 80% 70% at 50% 100%, rgba(255, 186, 80, .45), transparent 70%);
+  position: absolute; left: 0; right: 0; bottom: 0; height: 30vh;
+  background: linear-gradient(to top, rgba(255, 226, 150, .55), rgba(255, 200, 120, .15) 50%, transparent);
 }
 .motes { position: absolute; inset: 0; }
 .motes i {
@@ -364,7 +375,9 @@ button { font: inherit; }
 @keyframes sunPulse { 0%, 100% { opacity: .85; transform: scale(.96); } 50% { opacity: 1; transform: scale(1.05); } }
 @keyframes rise { 0% { transform: translateY(0); opacity: 0; } 15% { opacity: 1; } 85% { opacity: .9; } 100% { transform: translateY(-105vh); opacity: 0; } }
 @keyframes floaty { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
-@keyframes shimmer { to { background-position: 250% center; } }@keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+@keyframes shimmer { to { background-position: 250% center; } }
+@keyframes beamSway { from { transform: rotate(calc(var(--a) - 3deg)); opacity: .7; } to { transform: rotate(calc(var(--a) + 3deg)); opacity: 1; } }
+@keyframes cloudGlow { 0%, 100% { opacity: .9; } 50% { opacity: 1; filter: drop-shadow(0 0 22px rgba(255, 220, 140, .95)) blur(2px); } }@keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
 @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
 @keyframes sheet { from { transform: translateY(100%); } to { transform: none; } }
 @keyframes toast { 0% { opacity: 0; transform: translate(-50%, -12px); } 12%, 80% { opacity: 1; transform: translate(-50%, 0); } 100% { opacity: 0; transform: translate(-50%, -8px); } }
