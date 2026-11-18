@@ -1,11 +1,12 @@
-"""Generates The Sexual Alchemist logo: a rising flame of life energy, held by an alchemical ring.
-The emerald core is the preserved energy; the gold flame is that energy rising for betterment.
+"""Generates The Sexual Alchemist logo: a yogi in meditation, counting a japamala (108-bead mala).
+He glows from within: a golden aura, an emerald light at the heart (inner happiness, rejuvenation),
+and light sparkles around him.
 
 Outputs:
   icons/logo.svg               vector logo used in the app header and splash
   icons/icon-512.png           app icon
   icons/icon-192.png           app icon
-  icons/icon-maskable-512.png  Android adaptive icon (content kept inside the safe zone)
+  icons/icon-maskable-512.png  Android adaptive icon (artwork kept inside the safe zone)
 Run: python scripts/make-logo.py
 """
 import math
@@ -19,39 +20,32 @@ BG_TOP = (15, 43, 33)
 BG_BOTTOM = (5, 7, 6)
 GOLD = (217, 178, 95)
 GOLD_LIGHT = (246, 221, 150)
-EMBER = (194, 87, 26)
+FIG_TOP = (255, 240, 190)
+FIG_BOTTOM = (214, 150, 66)
 EMERALD = (16, 217, 138)
 EMERALD_LIGHT = (155, 255, 214)
 
-# Flame outline, drawn in a 512x512 design space (tip at top, rounded base).
-FLAME = [
-    (256, 104), (288, 160), (326, 214), (343, 284), (324, 348), (290, 382),
-    (256, 398), (222, 382), (188, 348), (169, 284), (182, 222), (206, 176), (226, 138),
-]
-CORE = (256, 322, 34, 52)  # cx, cy, rx, ry
-SPARKS = [(190, 118, 6), (322, 112, 5), (256, 70, 4)]
+# Design space is 512x512. Figure parts:
+HEAD = (256, 158, 30)                 # cx, cy, r
+HALO_R = 50
+TORSO = (256, 262, 70, 84)            # cx, cy, rx, ry
+LOTUS = (256, 334, 128, 38)           # crossed legs
+ARM_L = [(192, 222), (152, 292), (206, 284)]
+ARM_R = [(320, 222), (360, 292), (306, 284)]
+ARM_W = 22
+HEART = (256, 250)
+
+BEAD_COUNT = 27
+GURU = (256, 352)
+SPARKLES = [(118, 150, 13), (394, 146, 11), (96, 318, 9), (420, 322, 11), (256, 80, 8)]
 
 
-def smooth_closed(points, steps=24):
-    """Catmull-Rom spline through the points, returned as a dense closed polyline."""
-    out = []
-    n = len(points)
-    for i in range(n):
-        p0, p1, p2, p3 = points[(i - 1) % n], points[i], points[(i + 1) % n], points[(i + 2) % n]
-        for k in range(steps):
-            t = k / steps
-            t2, t3 = t * t, t * t * t
-            pt = []
-            for a in range(2):
-                v = 0.5 * (
-                    2 * p1[a]
-                    + (-p0[a] + p2[a]) * t
-                    + (2 * p0[a] - 5 * p1[a] + 4 * p2[a] - p3[a]) * t2
-                    + (-p0[a] + 3 * p1[a] - 3 * p2[a] + p3[a]) * t3
-                )
-                pt.append(v)
-            out.append(tuple(pt))
-    return out
+def mala_point(t):
+    """Japamala string: a gentle drape from the left hand, dipping to the guru bead at the centre."""
+    x = 196 + (316 - 196) * t
+    u = (x - 256) / 60.0
+    y = 286 + 66 * (1 - u * u)
+    return x, y
 
 
 def lerp(a, b, t):
@@ -74,88 +68,152 @@ def render(size, maskable=False, ss=4):
     def P(x, y):
         return ((256 + (x - 256) * scale) * k, (256 + (y - 256) * scale) * k)
 
+    def S(r):
+        return r * scale * k
+
+    def paste(color, mask):
+        img.paste(Image.new("RGB", (W, W), color), mask=mask)
+
+    def new_mask():
+        return Image.new("L", (W, W), 0)
+
+    def ellipse(d, cx, cy, rx, ry, fill=255):
+        x, y = P(cx, cy)
+        d.ellipse([x - S(rx), y - S(ry), x + S(rx), y + S(ry)], fill=fill)
+
+    def polyline(d, pts, width, fill=255):
+        ps = [P(x, y) for x, y in pts]
+        d.line(ps, fill=fill, width=int(S(width)), joint="curve")
+        r = S(width) / 2
+        for x, y in (ps[0], ps[-1]):
+            d.ellipse([x - r, y - r, x + r, y + r], fill=fill)
+
     img = vertical_gradient(W, BG_TOP, BG_BOTTOM)
 
-    # outer and inner alchemical rings
-    ring = Image.new("L", (W, W), 0)
+    # Alchemical rings
+    ring = new_mask()
     rd = ImageDraw.Draw(ring)
-    r_out = 200 * scale * k
     cx = cy = W / 2
-    rd.ellipse([cx - r_out, cy - r_out, cx + r_out, cy + r_out], outline=255, width=int(14 * scale * k))
-    r_in = 178 * scale * k
-    rd.ellipse([cx - r_in, cy - r_in, cx + r_in, cy + r_in], outline=110, width=int(3 * scale * k))
-    img.paste(Image.new("RGB", (W, W), GOLD), mask=ring)
+    r_out = S(200)
+    rd.ellipse([cx - r_out, cy - r_out, cx + r_out, cy + r_out], outline=255, width=int(S(14)))
+    r_in = S(178)
+    rd.ellipse([cx - r_in, cy - r_in, cx + r_in, cy + r_in], outline=110, width=max(1, int(S(3))))
+    paste(GOLD, ring)
 
-    # warm glow behind the flame
-    glow = Image.new("L", (W, W), 0)
-    gd = ImageDraw.Draw(glow)
-    gx, gy = P(256, 270)
-    gr = 170 * scale * k
-    gd.ellipse([gx - gr, gy - gr, gx + gr, gy + gr], fill=120)
-    glow = glow.filter(ImageFilter.GaussianBlur(40 * k))
-    img.paste(Image.new("RGB", (W, W), EMBER), mask=glow)
+    # Golden aura around the whole figure
+    aura = new_mask()
+    ellipse(ImageDraw.Draw(aura), HEART[0], HEART[1] + 10, 200, 200, fill=120)
+    paste(GOLD, aura.filter(ImageFilter.GaussianBlur(50 * k)))
 
-    # flame body: gold at the tip, ember at the base
-    flame_pts = [P(x, y) for x, y in smooth_closed(FLAME)]
-    mask = Image.new("L", (W, W), 0)
-    ImageDraw.Draw(mask).polygon(flame_pts, fill=255)
-    grad = vertical_gradient(W, GOLD_LIGHT, EMBER)
-    img.paste(grad, mask=mask)
+    # Emerald light at the heart: inner happiness and renewal
+    heart = new_mask()
+    ellipse(ImageDraw.Draw(heart), HEART[0], HEART[1], 46, 46, fill=230)
+    paste(EMERALD, heart.filter(ImageFilter.GaussianBlur(22 * k)))
+    core = new_mask()
+    ellipse(ImageDraw.Draw(core), HEART[0], HEART[1], 12, 12)
+    paste(EMERALD_LIGHT, core.filter(ImageFilter.GaussianBlur(3 * k)))
 
-    # emerald core: the preserved life energy
-    ccx, ccy = P(CORE[0], CORE[1])
-    crx, cry = CORE[2] * scale * k, CORE[3] * scale * k
-    core_glow = Image.new("L", (W, W), 0)
-    ImageDraw.Draw(core_glow).ellipse([ccx - crx * 1.5, ccy - cry * 1.3, ccx + crx * 1.5, ccy + cry * 1.3], fill=200)
-    core_glow = core_glow.filter(ImageFilter.GaussianBlur(18 * k))
-    img.paste(Image.new("RGB", (W, W), EMERALD), mask=core_glow)
-    core = Image.new("L", (W, W), 0)
-    ImageDraw.Draw(core).ellipse([ccx - crx, ccy - cry, ccx + crx, ccy + cry], fill=255)
-    img.paste(Image.new("RGB", (W, W), EMERALD), mask=core)
-    hi = Image.new("L", (W, W), 0)
-    hx, hy = P(CORE[0] - 8, CORE[1] - 18)
-    ImageDraw.Draw(hi).ellipse([hx - crx * 0.35, hy - cry * 0.35, hx + crx * 0.35, hy + cry * 0.35], fill=230)
-    img.paste(Image.new("RGB", (W, W), EMERALD_LIGHT), mask=hi.filter(ImageFilter.GaussianBlur(4 * k)))
+    # Figure silhouette, filled with a warm gold gradient
+    fig = new_mask()
+    fd = ImageDraw.Draw(fig)
+    ellipse(fd, HEAD[0], HEAD[1], HEAD[2], HEAD[2])
+    ellipse(fd, TORSO[0], TORSO[1], TORSO[2], TORSO[3])
+    ellipse(fd, LOTUS[0], LOTUS[1], LOTUS[2], LOTUS[3])
+    polyline(fd, ARM_L, ARM_W)
+    polyline(fd, ARM_R, ARM_W)
+    img.paste(vertical_gradient(W, FIG_TOP, FIG_BOTTOM), mask=fig)
 
-    # rising sparks
-    sd = Image.new("L", (W, W), 0)
-    sdraw = ImageDraw.Draw(sd)
-    for x, y, r in SPARKS:
+    # Halo around the head
+    halo = new_mask()
+    hx, hy = P(HEAD[0], HEAD[1])
+    hr = S(HALO_R)
+    ImageDraw.Draw(halo).ellipse([hx - hr, hy - hr, hx + hr, hy + hr], outline=170, width=max(1, int(S(3))))
+    paste(GOLD_LIGHT, halo)
+
+    # Japamala: 27 beads visible along the drape, with the emerald guru bead
+    string = new_mask()
+    pts = [mala_point(i / 60.0) for i in range(61)]
+    polyline(ImageDraw.Draw(string), pts, 2.5)
+    paste(GOLD, string)
+    beads = new_mask()
+    bd = ImageDraw.Draw(beads)
+    for i in range(BEAD_COUNT):
+        x, y = mala_point(i / (BEAD_COUNT - 1))
+        ellipse(bd, x, y, 5.5, 5.5)
+    paste(GOLD_LIGHT, beads)
+    guru = new_mask()
+    ellipse(ImageDraw.Draw(guru), GURU[0], GURU[1], 11, 11)
+    paste(EMERALD, guru)
+
+    # Light sparkles: the glow of renewal
+    spark = new_mask()
+    sd = ImageDraw.Draw(spark)
+    for x, y, r in SPARKLES:
         px, py = P(x, y)
-        rr = r * scale * k
-        sdraw.ellipse([px - rr, py - rr, px + rr, py + rr], fill=255)
-    img.paste(Image.new("RGB", (W, W), GOLD_LIGHT), mask=sd)
+        rr = S(r)
+        q = rr * 0.28
+        sd.polygon([(px, py - rr), (px + q, py - q), (px + rr, py), (px + q, py + q),
+                    (px, py + rr), (px - q, py + q), (px - rr, py), (px - q, py - q)], fill=255)
+    paste(GOLD_LIGHT, spark.filter(ImageFilter.GaussianBlur(1.2 * k)))
 
     return img.resize((size, size), Image.LANCZOS)
 
 
 def write_svg(path):
-    flame = smooth_closed(FLAME)
-    d = "M " + " L ".join(f"{x:.1f} {y:.1f}" for x, y in flame) + " Z"
-    cx, cy, rx, ry = CORE
-    sparks = "\n  ".join(f'<circle cx="{x}" cy="{y}" r="{r}" fill="#f6dd96"/>' for x, y, r in SPARKS)
-    svg = f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="The Sexual Alchemist logo">
+    def sparkle(x, y, r):
+        q = r * 0.28
+        pts = [(x, y - r), (x + q, y - q), (x + r, y), (x + q, y + q),
+               (x, y + r), (x - q, y + q), (x - r, y), (x - q, y - q)]
+        return "M " + " L ".join(f"{px:.1f} {py:.1f}" for px, py in pts) + " Z"
+
+    mala = [mala_point(i / 60.0) for i in range(61)]
+    mala_d = " ".join(f"{x:.1f},{y:.1f}" for x, y in mala)
+    beads = "\n    ".join(
+        f'<circle cx="{x:.1f}" cy="{y:.1f}" r="5.5"/>'
+        for x, y in (mala_point(i / (BEAD_COUNT - 1)) for i in range(BEAD_COUNT)))
+    arm_l = " ".join(f"{x},{y}" for x, y in ARM_L)
+    arm_r = " ".join(f"{x},{y}" for x, y in ARM_R)
+    sparkles = "\n  ".join(f'<path d="{sparkle(x, y, r)}" fill="#f6dd96"/>' for x, y, r in SPARKLES)
+
+    svg = f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="The Sexual Alchemist logo: a yogi meditating with a japamala">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#0f2b21"/>
       <stop offset="1" stop-color="#050706"/>
     </linearGradient>
-    <linearGradient id="flame" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#f6dd96"/>
-      <stop offset="1" stop-color="#c2571a"/>
+    <linearGradient id="fig" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff0be"/>
+      <stop offset="1" stop-color="#d6963e"/>
     </linearGradient>
-    <radialGradient id="core" cx="0.4" cy="0.35" r="0.7">
+    <radialGradient id="aura" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#d9b25f" stop-opacity="0.45"/>
+      <stop offset="1" stop-color="#d9b25f" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="heart" cx="0.5" cy="0.5" r="0.5">
       <stop offset="0" stop-color="#9bffd6"/>
-      <stop offset="0.5" stop-color="#10d98a"/>
-      <stop offset="1" stop-color="#067a50"/>
+      <stop offset="0.45" stop-color="#10d98a" stop-opacity="0.8"/>
+      <stop offset="1" stop-color="#10d98a" stop-opacity="0"/>
     </radialGradient>
   </defs>
-  <rect width="512" height="512" rx="0" fill="url(#bg)"/>
+  <rect width="512" height="512" fill="url(#bg)"/>
   <circle cx="256" cy="256" r="200" fill="none" stroke="#d9b25f" stroke-width="14"/>
   <circle cx="256" cy="256" r="178" fill="none" stroke="#5a4620" stroke-width="3"/>
-  <path d="{d}" fill="url(#flame)"/>
-  <ellipse cx="{cx}" cy="{cy}" rx="{rx}" ry="{ry}" fill="url(#core)"/>
-  {sparks}
+  <circle cx="256" cy="260" r="200" fill="url(#aura)"/>
+  <circle cx="256" cy="{HEART[1]}" r="60" fill="url(#heart)"/>
+  <g fill="url(#fig)" stroke="url(#fig)" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="{HEAD[0]}" cy="{HEAD[1]}" r="{HEAD[2]}" stroke="none"/>
+    <ellipse cx="{TORSO[0]}" cy="{TORSO[1]}" rx="{TORSO[2]}" ry="{TORSO[3]}" stroke="none"/>
+    <ellipse cx="{LOTUS[0]}" cy="{LOTUS[1]}" rx="{LOTUS[2]}" ry="{LOTUS[3]}" stroke="none"/>
+    <polyline points="{arm_l}" fill="none" stroke-width="{ARM_W}"/>
+    <polyline points="{arm_r}" fill="none" stroke-width="{ARM_W}"/>
+  </g>
+  <circle cx="{HEAD[0]}" cy="{HEAD[1]}" r="{HALO_R}" fill="none" stroke="#f6dd96" stroke-opacity="0.67" stroke-width="3"/>
+  <polyline points="{mala_d}" fill="none" stroke="#d9b25f" stroke-width="2.5" stroke-linecap="round"/>
+  <g fill="#f6dd96">
+    {beads}
+  </g>
+  <circle cx="{GURU[0]}" cy="{GURU[1]}" r="11" fill="#10d98a"/>
+  {sparkles}
 </svg>
 '''
     with open(path, "w", encoding="utf-8") as f:
