@@ -1,0 +1,26 @@
+{
+  "clients": [
+    {
+      "email": "client-one@example.com",
+      "days": [
+        {
+          "date": "2025-11-01",
+          "result": "good",
+          "approxTime": null,
+          "chain": [],
+          "rootCause": ""
+        },
+        {
+          "date": "2025-11-02",
+          "result": "bad",
+          "approxTime": "22:30",
+          "chain": [
+            { "q": "Why did it happen?", "a": "I was alone and bored at night" },
+            { "q": "Why was that?", "a": "I skipped my evening plan" }
+          ],
+          "rootCause": "I skipped my evening plan"
+        }
+      ]
+    }
+  ]
+}

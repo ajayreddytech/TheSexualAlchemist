@@ -1,0 +1,14 @@
+{
+  "name": "the-sexual-alchemist",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Track daily energy saving with Firestore storage. Deployed on Netlify as a PWA.",
+  "type": "module",
+  "scripts": {
+    "import:dry": "node scripts/import-history.mjs scripts/history.json --dry-run",
+    "import": "node scripts/import-history.mjs scripts/history.json"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.7.0"
+  }
+}
