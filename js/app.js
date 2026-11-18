@@ -253,8 +253,21 @@ function weekStrip() {
   return `<div class="week">${cells.join("")}</div>`;
 }
 
+// The day the Today card is about. It is the day after the latest logged day before today,
+// so an unlogged yesterday stays on screen until it is logged. Once that is done, it moves on,
+// and finally shows today.
+function pendingKey() {
+  const tk = todayKey();
+  let anchor = null;
+  for (const k of state.days.keys()) if (k < tk && (!anchor || k > anchor)) anchor = k;
+  if (!anchor) return tk;
+  const next = keyOf(addDays(parseKey(anchor), 1));
+  return next <= tk ? next : tk;
+}
+
 function viewToday() {
-  const k = todayKey();
+  const k = pendingKey();
+  const isToday = k === todayKey();
   const e = state.days.get(k);
   const s = stats();
   const showAnswers = !e || state.editingToday;
@@ -262,8 +275,8 @@ function viewToday() {
   return `
     <div class="today-layout">
       <section class="card">
-        <p class="eyebrow">${esc(fmtLong(new Date()))}</p>
-        <h2 class="question">Did you save your life energy today?</h2>
+        <p class="eyebrow">${esc(fmtLong(parseKey(k)))}${isToday ? "" : " · not logged yet"}</p>
+        <h2 class="question">${isToday ? "Did you save your life energy today?" : "Did you save your life energy that day?"}</h2>
         <p class="sub">Good means you saved your life-giving energy. Bad means you watched porn or released your life-giving energy. Either way, be honest here.</p>
         ${showAnswers ? answers(k) + cancelEdit : statusCard(e)}
       </section>
@@ -597,12 +610,34 @@ function viewInsights() {
     ? (badEntries.reduce((x, e) => x + (e.chain?.length || 0), 0) / badEntries.length).toFixed(1)
     : "—";
 
-  const monthRows = [...groupBy(entries, (e) => e.date.slice(0, 7))]
-    .sort((a, b) => b[0].localeCompare(a[0]))
-    .map(([k, list]) => {
-      const [y, m] = k.split("-").map(Number);
-      return rowLine(new Date(y, m - 1, 1).toLocaleDateString(undefined, { month: "long", year: "numeric" }), summarize(list));
-    }).join("");
+  // Month by month: every calendar day of the month counts. Days not logged as good are red.
+  // The current month counts days so far. Months with no entries still show, as all red.
+  const goodByMonth = new Map();
+  entries.forEach((e) => { if (e.result === "good") goodByMonth.set(e.date.slice(0, 7), (goodByMonth.get(e.date.slice(0, 7)) || 0) + 1); });
+  const tm = tk.slice(0, 7);
+  const [fy, fm] = entries[0].date.split("-").map(Number);
+  const monthKeys = [];
+  for (let y = fy, m = fm; `${y}-${pad(m)}` <= tm;) {
+    monthKeys.push(`${y}-${pad(m)}`);
+    m++;
+    if (m > 12) { m = 1; y++; }
+  }
+  const monthRows = monthKeys.reverse().map((k) => {
+    const [y, m] = k.split("-").map(Number);
+    const isCur = k === tm;
+    const days = isCur ? now.getDate() : new Date(y, m, 0).getDate();
+    const green = goodByMonth.get(k) || 0;
+    const red = days - green;
+    const pct = ((green / days) * 100).toFixed(1);
+    const label = new Date(y, m - 1, 1).toLocaleDateString(undefined, { month: "long", year: "numeric" });
+    return `
+      <li class="row-line">
+        <b>${esc(label)}${isCur ? " (so far)" : ""}</b>
+        <span class="h-good">${green} green</span>
+        <span class="h-bad">${red} red</span>
+        <span>${pct}%</span>
+      </li>`;
+  }).join("");
   // Year by year: every day of the year counts. Days not logged as good are red.
   // The current year counts days so far.
   const isLeap = (y) => (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
