@@ -30,6 +30,8 @@ const state = {
   month: new Date(),
   selected: null,
   editingToday: false,
+  chartGran: "month",     // progress chart: day | week | month | year
+  chartMode: "period",    // progress chart: period | cum
   unsub: null
 };
 
@@ -377,25 +379,162 @@ const rowLine = (label, s) => `
     <span>${s.pct}%</span>
   </li>`;
 
-// Running total as a line chart: one point per logged day, value = clean days so far.
-function cumChart(entries) {
-  if (entries.length < 2) return `<p class="sub">Log a few days to see your running total.</p>`;
-  let c = 0;
-  const pts = entries.map((e, i) => { if (e.result === "good") c++; return [i, c]; });
-  const W = 600, H = 160, max = pts[pts.length - 1][1] || 1;
-  const xy = pts.map(([i, v]) => [(i / (pts.length - 1)) * W, H - (v / max) * (H - 12) - 6]);
-  const line = xy.map((p) => p.map((n) => n.toFixed(1)).join(",")).join(" ");
+/* ---------- progress chart: good rate per day / week / month / year, or cumulative ---------- */
+const GRANS = [["day", "Day"], ["week", "Week"], ["month", "Month"], ["year", "Year"]];
+
+function mondayOf(d) {
+  const x = new Date(d);
+  x.setDate(x.getDate() - ((x.getDay() + 6) % 7));
+  return x;
+}
+
+function periodKeyOf(d, gran) {
+  const k = keyOf(d);
+  if (gran === "day") return k;
+  if (gran === "week") return keyOf(mondayOf(d));
+  if (gran === "month") return k.slice(0, 7);
+  return k.slice(0, 4);
+}
+
+function periodLabel(key, gran) {
+  if (gran === "day") return fmtShort(key);
+  if (gran === "week") return `Week of ${fmtShort(key)}`;
+  if (gran === "month") {
+    const [y, m] = key.split("-").map(Number);
+    return new Date(y, m - 1, 1).toLocaleDateString(undefined, { month: "long", year: "numeric" });
+  }
+  return key;
+}
+
+function shortLabel(key, gran) {
+  if (gran === "day" || gran === "week") return parseKey(key).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  if (gran === "month") {
+    const [y, m] = key.split("-").map(Number);
+    return new Date(y, m - 1, 1).toLocaleDateString(undefined, { month: "short", year: "2-digit" });
+  }
+  return key;
+}
+
+// One bucket per period, from the start of the first logged period up to today.
+// Every calendar day counts toward its period. A day that is not logged as good is red.
+function buildSeries(gran) {
+  const keys = [...state.days.keys()].sort();
+  if (!keys.length) return [];
+  const first = parseKey(keys[0]);
+  const start = gran === "day" ? first
+    : gran === "week" ? mondayOf(first)
+    : gran === "month" ? new Date(first.getFullYear(), first.getMonth(), 1)
+    : new Date(first.getFullYear(), 0, 1);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const map = new Map();
+  for (let d = new Date(start); d <= today; d = addDays(d, 1)) {
+    const pk = periodKeyOf(d, gran);
+    if (!map.has(pk)) map.set(pk, { key: pk, days: 0, good: 0 });
+    const s = map.get(pk);
+    s.days++;
+    if (state.days.get(keyOf(d))?.result === "good") s.good++;
+  }
+  return [...map.values()];
+}
+
+// Catmull-Rom through the points, converted to cubic Bezier segments: a smooth curve.
+function smoothPath(pts) {
+  if (pts.length < 2) return "";
+  let d = `M${pts[0][0].toFixed(1)} ${pts[0][1].toFixed(1)}`;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[i - 1] || pts[i];
+    const p1 = pts[i];
+    const p2 = pts[i + 1];
+    const p3 = pts[i + 2] || p2;
+    const c1x = p1[0] + (p2[0] - p0[0]) / 6, c1y = p1[1] + (p2[1] - p0[1]) / 6;
+    const c2x = p2[0] - (p3[0] - p1[0]) / 6, c2y = p2[1] - (p3[1] - p1[1]) / 6;
+    d += ` C${c1x.toFixed(1)} ${c1y.toFixed(1)} ${c2x.toFixed(1)} ${c2y.toFixed(1)} ${p2[0].toFixed(1)} ${p2[1].toFixed(1)}`;
+  }
+  return d;
+}
+
+function progressCard() {
+  const gran = state.chartGran;
+  const cum = state.chartMode === "cum";
+  const series = buildSeries(gran);
+
+  const toggles = `
+    <div class="chart-head">
+      <div class="seg">${GRANS.map(([g, label]) =>
+        `<button type="button" class="seg-btn ${g === gran ? "active" : ""}" data-gran="${g}">${label}</button>`).join("")}</div>
+      <div class="seg">
+        <button type="button" class="seg-btn ${!cum ? "active" : ""}" data-cmode="period">Per period</button>
+        <button type="button" class="seg-btn ${cum ? "active" : ""}" data-cmode="cum">Cumulative</button>
+      </div>
+    </div>`;
+
+  if (series.length < 2) {
+    return `<section class="card wide"><h3>Good rate</h3>${toggles}<p class="sub">Need at least two periods of data to draw the chart.</p></section>`;
+  }
+
+  // values in percent
+  let values;
+  if (cum) {
+    let g = 0, d = 0;
+    values = series.map((s) => { g += s.good; d += s.days; return d ? (g / d) * 100 : 0; });
+  } else if (gran === "day") {
+    values = series.map((_, i) => {
+      const win = series.slice(Math.max(0, i - 6), i + 1);
+      const days = win.reduce((a, s) => a + s.days, 0);
+      const good = win.reduce((a, s) => a + s.good, 0);
+      return days ? (good / days) * 100 : 0;
+    });
+  } else {
+    values = series.map((s) => (s.days ? (s.good / s.days) * 100 : 0));
+  }
+
+  const W = 600, H = 240, L = 40, R = 14, T = 16, B = 30;
+  const n = values.length;
+  const x = (i) => L + (i * (W - L - R)) / (n - 1);
+  const y = (v) => T + (1 - v / 100) * (H - T - B);
+  const pts = values.map((v, i) => [x(i), y(v)]);
+  const line = smoothPath(pts);
+  const area = `${line} L${x(n - 1).toFixed(1)} ${H - B} L${x(0).toFixed(1)} ${H - B} Z`;
+  const grid = [0, 50, 100].map((v) =>
+    `<line x1="${L}" x2="${W - R}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}" class="grid-line"/>` +
+    `<text x="${L - 8}" y="${(y(v) + 4).toFixed(1)}" class="axis-label" text-anchor="end">${v}%</text>`).join("");
+  const dots = n <= 60
+    ? pts.map(([px, py], i) => `<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="3.4" class="dot-pt"><title>${esc(periodLabel(series[i].key, gran))}: ${values[i].toFixed(1)}%</title></circle>`).join("")
+    : "";
+  const xLabels = `
+    <text x="${x(0).toFixed(1)}" y="${H - 8}" class="axis-label" text-anchor="start">${esc(shortLabel(series[0].key, gran))}</text>
+    <text x="${x(n - 1).toFixed(1)}" y="${H - 8}" class="axis-label" text-anchor="end">${esc(shortLabel(series[n - 1].key, gran))}</text>`;
+
+  const last = values[n - 1];
+  const note = cum
+    ? "Cumulative good rate from the first logged period to now. Unlogged days count as red."
+    : gran === "day"
+      ? "Good rate over the last 7 days, day by day. Unlogged days count as red."
+      : `Good rate of each ${gran}. Unlogged days count as red; the current ${gran} counts days so far.`;
+
   return `
-    <svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Running total of clean days">
-      <defs>
-        <linearGradient id="gfill" x1="0" x2="0" y1="0" y2="1">
-          <stop offset="0" stop-color="#10d98a" stop-opacity=".45"/>
-          <stop offset="1" stop-color="#10d98a" stop-opacity="0"/>
-        </linearGradient>
-      </defs>
-      <polygon points="0,${H} ${line} ${W},${H}" fill="url(#gfill)"/>
-      <polyline points="${line}" fill="none" stroke="#10d98a" stroke-width="3" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>
-    </svg>`;
+    <section class="card wide">
+      <div class="chart-title">
+        <h3>${cum ? "Cumulative" : "Good rate"} · by ${gran}</h3>
+        <b class="chart-now">${last.toFixed(1)}%</b>
+      </div>
+      ${toggles}
+      <svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${cum ? "Cumulative" : "Good rate"} by ${gran}">
+        <defs>
+          <linearGradient id="progFill" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0" stop-color="#ffe08a" stop-opacity=".55"/>
+            <stop offset="1" stop-color="#ffe08a" stop-opacity="0"/>
+          </linearGradient>
+        </defs>
+        ${grid}
+        <path d="${area}" fill="url(#progFill)"/>
+        <path d="${line}" fill="none" stroke="#ffd77a" stroke-width="3" stroke-linecap="round"/>
+        ${dots}
+        ${xLabels}
+      </svg>
+      <p class="sub">${note}</p>
+    </section>`;
 }
 
 function viewInsights() {
@@ -464,9 +603,26 @@ function viewInsights() {
       const [y, m] = k.split("-").map(Number);
       return rowLine(new Date(y, m - 1, 1).toLocaleDateString(undefined, { month: "long", year: "numeric" }), summarize(list));
     }).join("");
-  const yearRows = [...groupBy(entries, (e) => e.date.slice(0, 4))]
-    .sort((a, b) => b[0].localeCompare(a[0]))
-    .map(([k, list]) => rowLine(k, summarize(list))).join("");
+  // Year by year: every day of the year counts. Days not logged as good are red.
+  // The current year counts days so far.
+  const isLeap = (y) => (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
+  const firstYear = Number(entries[0].date.slice(0, 4));
+  const curYear = now.getFullYear();
+  const yearRows = [];
+  for (let y = curYear; y >= firstYear; y--) {
+    const ys = String(y);
+    const days = y === curYear ? elapsedYear : isLeap(y) ? 366 : 365;
+    const green = entries.filter((e) => e.date.startsWith(ys) && e.result === "good").length;
+    const red = days - green;
+    const pct = ((green / days) * 100).toFixed(1);
+    yearRows.push(`
+      <li class="row-line">
+        <b>${ys}${y === curYear ? " (so far)" : ""}</b>
+        <span class="h-good">${green} green</span>
+        <span class="h-bad">${red} red</span>
+        <span>${pct}%</span>
+      </li>`);
+  }
 
   const goodStreakRows = [...goodRuns].sort((a, b) => b.start.localeCompare(a.start)).map((r) => `
     <li class="row-line">
@@ -531,11 +687,7 @@ function viewInsights() {
         </div>
       </section>
 
-      <section class="card wide">
-        <h3>Running total · ${all.good} points</h3>
-        <p class="sub">1 point per clean day. Average: ${(all.good / all.total).toFixed(2)} points per logged day.</p>
-        ${cumChart(entries)}
-      </section>
+      ${progressCard()}
 
       <section class="card">
         <h3>All clean streaks (${goodRuns.length})</h3>
@@ -549,7 +701,7 @@ function viewInsights() {
 
       <section class="card">
         <h3>Year by year</h3>
-        <ul class="entries">${yearRows}</ul>
+        <ul class="entries">${yearRows.join("")}</ul>
       </section>
 
       <section class="card">
@@ -623,11 +775,19 @@ $("#tabbar").addEventListener("click", (e) => {
 });
 
 $("#view").addEventListener("click", (e) => {
-  const t = e.target.closest("[data-act],[data-pick]");
+  const t = e.target.closest("[data-act],[data-pick],[data-gran],[data-cmode]");
   if (!t) return;
 
   if (t.dataset.pick) {
     state.selected = t.dataset.pick;
+    return render();
+  }
+  if (t.dataset.gran) {
+    state.chartGran = t.dataset.gran;
+    return render();
+  }
+  if (t.dataset.cmode) {
+    state.chartMode = t.dataset.cmode;
     return render();
   }
 

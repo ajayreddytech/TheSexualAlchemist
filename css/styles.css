@@ -272,7 +272,21 @@ button { font: inherit; }
   background: rgba(217, 178, 95, .14); color: var(--gold-soft); border: 1px solid #5a4620;
 }
 .scroll { max-height: 380px; overflow: auto; padding-right: 4px; }
-.chart { width: 100%; height: 160px; display: block; margin-top: 14px; }
+.chart { width: 100%; height: auto; display: block; margin-top: 10px; overflow: visible; }
+.chart-title { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.chart-now { font-size: 1.6rem; color: var(--good); }
+.chart-head { display: flex; flex-wrap: wrap; gap: 10px; justify-content: space-between; margin: 12px 0 4px; }
+.seg { display: inline-flex; gap: 4px; padding: 4px; border-radius: 999px; background: rgba(20, 12, 22, .6); border: 1px solid var(--line); }
+.seg-btn {
+  border: 0; background: transparent; color: var(--muted); cursor: pointer;
+  padding: 7px 14px; border-radius: 999px; font-weight: 600; font-size: .85rem;
+  transition: background .3s var(--ease), color .3s;
+}
+.seg-btn.active { background: linear-gradient(135deg, var(--gold-soft), #8c6a22); color: #140d02; }
+.grid-line { stroke: rgba(246, 210, 122, .18); stroke-width: 1; }
+.axis-label { fill: var(--muted); font-size: 12px; }
+.dot-pt { fill: #fff3c4; stroke: #d9a34a; stroke-width: 1.2; }
+.dot-pt:hover { r: 5; }
 
 /* ---------- tab bar (floating, native-feeling) ---------- */
 .tabbar {
