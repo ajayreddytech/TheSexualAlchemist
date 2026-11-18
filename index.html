@@ -17,14 +17,39 @@
   <link rel="stylesheet" href="/css/styles.css" />
 </head>
 <body>
+  <!-- Golden sunrise scene: sun, clouds, lotus pond, floating light. Purely decorative. -->
+  <div class="scene" aria-hidden="true">
+    <div class="sun"></div>
+    <div class="cloud cloud-a"></div>
+    <div class="cloud cloud-b"></div>
+    <div class="cloud cloud-c"></div>
+    <div class="pond"></div>
+    <div class="motes">
+      <i style="--x:6%;--dl:0s;--d:15s;--s:3px"></i>
+      <i style="--x:14%;--dl:-4s;--d:19s;--s:2px"></i>
+      <i style="--x:23%;--dl:-9s;--d:13s;--s:4px"></i>
+      <i style="--x:31%;--dl:-2s;--d:17s;--s:2px"></i>
+      <i style="--x:40%;--dl:-12s;--d:21s;--s:3px"></i>
+      <i style="--x:49%;--dl:-6s;--d:14s;--s:2px"></i>
+      <i style="--x:57%;--dl:-1s;--d:18s;--s:3px"></i>
+      <i style="--x:65%;--dl:-10s;--d:16s;--s:4px"></i>
+      <i style="--x:73%;--dl:-5s;--d:20s;--s:2px"></i>
+      <i style="--x:81%;--dl:-14s;--d:15s;--s:3px"></i>
+      <i style="--x:89%;--dl:-7s;--d:18s;--s:2px"></i>
+      <i style="--x:95%;--dl:-3s;--d:22s;--s:3px"></i>
+      <i style="--x:18%;--dl:-16s;--d:17s;--s:2px"></i>
+      <i style="--x:60%;--dl:-18s;--d:19s;--s:3px"></i>
+    </div>
+  </div>
+
   <div id="splash" class="splash" aria-hidden="true">
-    <img class="splash-logo" src="/icons/logo.svg" alt="" />
+    <img class="splash-logo" src="/icons/logo.png" alt="" />
     <p class="splash-name">The Sexual Alchemist</p>
   </div>
 
   <section id="login" class="login" hidden>
     <div class="login-card card">
-      <img class="splash-logo" src="/icons/logo.svg" alt="The Sexual Alchemist logo" />
+      <img class="splash-logo" src="/icons/logo.png" alt="The Sexual Alchemist logo" />
       <h1>The Sexual Alchemist</h1>
       <p class="sub">Turn every day of restraint into gold. Your energy, saved for a real connection.</p>
       <button id="signIn" class="google-btn" type="button">
@@ -38,7 +63,7 @@
   <div id="app" class="app" hidden>
     <header class="topbar">
       <div class="brand">
-        <img class="brand-logo" src="/icons/logo.svg" alt="" />
+        <img class="brand-logo" src="/icons/logo.png" alt="" />
         <div>
           <h1>The Sexual Alchemist</h1>
           <p id="greeting" class="greet"></p>

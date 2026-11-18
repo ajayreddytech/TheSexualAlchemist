@@ -1,12 +1,12 @@
 /* The Sexual Alchemist — dark-only theme */
 :root {
-  --bg: #050706;
-  --surface: #0d1512;
-  --card-top: #14201b;
-  --card-bottom: #0a0f0d;
-  --line: #1e2b25;
-  --text: #e9f3ee;
-  --muted: #8aa196;
+  --bg: #160d22;
+  --surface: rgba(30, 18, 30, .72);
+  --card-top: rgba(52, 30, 34, .62);
+  --card-bottom: rgba(22, 13, 24, .78);
+  --line: rgba(246, 210, 122, .24);
+  --text: #fbf3df;
+  --muted: #e2cfa6;
   --gold: #d9b25f;
   --gold-soft: #f3d68a;
   --good: #10d98a;
@@ -21,6 +21,8 @@
 *, *::before, *::after { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 [hidden] { display: none !important; }
 
+/* html stays transparent so the body gradient reaches the canvas, behind the .scene layer */
+html { background: transparent; }
 html, body {
   height: 100%;
   margin: 0;
@@ -34,10 +36,11 @@ html, body {
 }
 input, textarea { -webkit-user-select: text; user-select: text; }
 body {
+  /* dusk sky: deep violet above, warm amber glow at the lotus pond below */
   background:
-    radial-gradient(1100px 620px at 8% -12%, #0f2b21 0%, transparent 60%),
-    radial-gradient(900px 560px at 108% 8%, #2a0b10 0%, transparent 55%),
-    var(--bg);
+    radial-gradient(120vmax 70vmax at 50% 108%, #c97a2a 0%, rgba(201, 122, 42, 0) 62%),
+    linear-gradient(180deg, #120a1e 0%, #241436 40%, #4a2440 68%, #8a4a2a 100%);
+  background-attachment: fixed;
   min-height: 100%;
 }
 h1, h2, h3, p { margin: 0; }
@@ -49,8 +52,8 @@ button { font: inherit; }
 /* ---------- splash / login ---------- */
 .splash {
   position: fixed; inset: 0; z-index: 50;
-  display: grid; place-content: center; justify-items: center; gap: 12px;
-  background: var(--bg);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
+  background: transparent;
   transition: opacity .6s var(--ease);
 }
 .splash.hide { opacity: 0; pointer-events: none; }
@@ -61,7 +64,7 @@ button { font: inherit; }
 }
 .splash-name { color: var(--muted); letter-spacing: .25em; text-transform: uppercase; font-size: .72rem; }
 
-.login { min-height: 100dvh; display: grid; place-items: center; padding: 24px; padding-top: calc(24px + env(safe-area-inset-top)); }
+.login { position: relative; z-index: 1; min-height: 100dvh; display: grid; place-items: center; padding: 24px; padding-top: calc(24px + env(safe-area-inset-top)); }
 .login-card { max-width: 440px; width: 100%; text-align: center; display: grid; gap: 16px; justify-items: center; animation: rise .7s var(--ease) both; }
 .login-card h1 { font-size: clamp(1.5rem, 5vw, 2rem); }
 .google-btn {
@@ -75,12 +78,12 @@ button { font: inherit; }
 .fine { font-size: .78rem; color: var(--muted); }
 
 /* ---------- shell ---------- */
-.app { min-height: 100dvh; padding-top: env(safe-area-inset-top); display: flex; flex-direction: column; }
+.app { position: relative; z-index: 1; min-height: 100dvh; padding-top: env(safe-area-inset-top); display: flex; flex-direction: column; }
 .topbar {
   position: sticky; top: 0; z-index: 10;
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
   padding: 14px 18px;
-  background: rgba(5, 7, 6, .78);
+  background: rgba(24, 14, 30, .55);
   backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
   border-bottom: 1px solid var(--line);
 }
@@ -118,8 +121,9 @@ button { font: inherit; }
 
 .card {
   background: linear-gradient(180deg, var(--card-top), var(--card-bottom));
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
   border: 1px solid var(--line); border-radius: var(--radius); padding: 20px;
-  box-shadow: 0 24px 60px -34px #000;
+  box-shadow: 0 0 40px -12px rgba(255, 180, 70, .28), 0 24px 60px -34px #000;
 }
 .card.wide { grid-column: 1 / -1; }
 
@@ -127,7 +131,13 @@ button { font: inherit; }
 .today-layout, .cal-layout { display: grid; gap: 16px; grid-template-columns: 1fr; align-items: start; }
 
 /* ---------- hero / answers ---------- */
-.question { font-size: clamp(1.6rem, 4.6vw, 2.6rem); line-height: 1.15; font-weight: 800; margin-top: 8px; }
+.question {
+  font-size: clamp(1.6rem, 4.6vw, 2.6rem); line-height: 1.15; font-weight: 800; margin-top: 8px;
+  background: linear-gradient(90deg, #fff7da, #f6c85f, #ffe9a8, #f6c85f, #fff7da);
+  background-size: 250% auto;
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  animation: shimmer 7s linear infinite;
+}
 .answers { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 22px; }
 .answer {
   position: relative; overflow: hidden; border: 0; border-radius: 24px; min-height: 160px; padding: 18px;
@@ -269,7 +279,7 @@ button { font: inherit; }
   position: fixed; left: 50%; transform: translateX(-50%);
   bottom: calc(12px + env(safe-area-inset-bottom)); z-index: 20;
   display: flex; gap: 4px; padding: 6px; border-radius: 999px;
-  background: rgba(13, 21, 18, .82);
+  background: rgba(24, 14, 30, .7);
   backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
   border: 1px solid var(--line); box-shadow: 0 20px 50px -20px #000;
 }
@@ -294,7 +304,7 @@ button { font: inherit; }
 }
 .sheet {
   width: 100%; max-width: 580px; max-height: 92dvh; overflow: auto;
-  background: linear-gradient(180deg, #13201b, #0a0f0d);
+  background: linear-gradient(180deg, rgba(40, 24, 36, .96), rgba(18, 11, 22, .98));
   border: 1px solid var(--line); border-radius: 28px 28px 0 0;
   padding: 22px 20px calc(22px + env(safe-area-inset-bottom));
   animation: sheet .45s var(--ease) both;
@@ -318,8 +328,43 @@ button { font: inherit; }
   animation: toast 2.6s var(--ease) both; text-align: center;
 }
 
+/* ---------- golden dusk scene (behind everything) ---------- */
+/* scene sits above the body background and below the app content (which is raised to z-index 1) */
+.scene { position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
+
+.sun {
+  position: absolute; top: -22vmin; left: 50%; width: 90vmin; height: 90vmin; margin-left: -45vmin;
+  border-radius: 50%;
+  background: radial-gradient(circle, #fff7da 0%, #ffd77a 14%, rgba(255, 170, 60, .55) 35%, rgba(255, 140, 40, .08) 60%, transparent 70%);
+  animation: sunPulse 7s ease-in-out infinite;
+}
+.cloud {
+  position: absolute; width: 70vw; height: 16vh; border-radius: 50%;
+  background: radial-gradient(ellipse at 50% 55%, rgba(255, 214, 140, .5), rgba(255, 160, 70, .16) 50%, transparent 72%);
+  filter: blur(8px);
+  animation: drift 26s ease-in-out infinite alternate;
+}
+.cloud-a { top: 50%; left: -20vw; }
+.cloud-b { top: 66%; right: -25vw; width: 80vw; animation-duration: 34s; }
+.cloud-c { top: 34%; left: 20vw; width: 55vw; height: 12vh; animation-duration: 22s; }
+
+.pond {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 34vh;
+  background: radial-gradient(ellipse 80% 70% at 50% 100%, rgba(255, 186, 80, .45), transparent 70%);
+}
+.motes { position: absolute; inset: 0; }
+.motes i {
+  position: absolute; left: var(--x); bottom: -8px; width: var(--s, 3px); height: var(--s, 3px); border-radius: 50%;
+  background: #ffe9a8; box-shadow: 0 0 10px 2px rgba(255, 210, 120, .8);
+  opacity: 0; animation: rise var(--d, 14s) linear var(--dl, 0s) infinite;
+}
+
 /* ---------- keyframes ---------- */
-@keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+@keyframes drift { from { transform: translateX(-8vw); } to { transform: translateX(8vw); } }
+@keyframes sunPulse { 0%, 100% { opacity: .85; transform: scale(.96); } 50% { opacity: 1; transform: scale(1.05); } }
+@keyframes rise { 0% { transform: translateY(0); opacity: 0; } 15% { opacity: 1; } 85% { opacity: .9; } 100% { transform: translateY(-105vh); opacity: 0; } }
+@keyframes floaty { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+@keyframes shimmer { to { background-position: 250% center; } }@keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
 @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
 @keyframes sheet { from { transform: translateY(100%); } to { transform: none; } }
 @keyframes toast { 0% { opacity: 0; transform: translate(-50%, -12px); } 12%, 80% { opacity: 1; transform: translate(-50%, 0); } 100% { opacity: 0; transform: translate(-50%, -8px); } }
