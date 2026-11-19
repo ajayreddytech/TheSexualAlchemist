@@ -112,12 +112,21 @@ onAuthStateChanged(auth, (user) => {
   } else {
     state.unsub?.();
     state.unsub = null;
+    state.unsubReflection?.();
+    state.unsubReflection = null;
+    state.reflection = null;
     state.days = new Map();
   }
   render();
 });
 
 function subscribe(uid) {
+  state.unsubReflection?.();
+  state.unsubReflection = onSnapshot(
+    doc(db, "users", uid, "profile", "reflection"),
+    (snap) => { state.reflection = snap.data() || null; if (!(state.tab === "why" && state.editingWhy)) render(); },
+    (err) => toast("Could not load your why: " + friendly(err))
+  );
   state.unsub?.();
   state.unsub = onSnapshot(
     collection(db, "users", uid, "days"),
@@ -349,9 +358,17 @@ function viewCalendar() {
 
 /* ---------- insights ---------- */
 const WEEKDAYS_FULL = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+const GRACE_DAYS = 2;   // an unlogged day counts as "not logged" only once it is this many days old
+const RECENT_N = 3;
+// Causes left out of Top root causes (the data stays; only the list hides them).
+const HIDDEN_CAUSES = new Set(["Relapse, no trigger noted", "Unclear note", "Heavy lunch", "Sleeping in the evening"]);     // lists show this many; the rest sit behind a dropdown
+// Past slips logged without a time are spread over the day like this. Slips from today on go to Night.
+const PAST_UNKNOWN_SPLIT = { Night: 0.55, Morning: 0.25, Afternoon: 0.1, Evening: 0.1 };
 
 const dayDiff = (a, b) => Math.round((parseKey(b) - parseKey(a)) / 864e5);
 const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+const fmtDM = (k) => parseKey(k).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+const kpi = (n, label, cls = "") => `<div class="stat ${cls}"><div class="num">${n}</div><div class="lbl">${label}</div></div>`;
 
 function summarize(list) {
   const total = list.length;
@@ -376,21 +393,44 @@ function runsOf(list, result) {
   return runs;
 }
 
-function groupBy(list, fn) {
-  const m = new Map();
-  list.forEach((e) => { const k = fn(e); if (!m.has(k)) m.set(k, []); m.get(k).push(e); });
-  return m;
+// Counts calendar days from startKey to endKey (capped at today).
+// Clean days are good, slip days are bad. An unlogged day is red once it is GRACE_DAYS old;
+// newer unlogged days are left out, because there is still time to log them.
+function tally(startKey, endKey) {
+  const tk = todayKey();
+  const end = endKey < tk ? endKey : tk;
+  const t = { days: 0, good: 0, notLogged: 0 };
+  for (let d = parseKey(startKey); keyOf(d) <= end; d = addDays(d, 1)) {
+    const k = keyOf(d);
+    const e = state.days.get(k);
+    if (e) { t.days++; if (e.result === "good") t.good++; }
+    else if (dayDiff(k, tk) >= GRACE_DAYS) { t.days++; t.notLogged++; }
+  }
+  return t;
+}
+const pctOf = (t) => (t.days ? `${((t.good / t.days) * 100).toFixed(1)}%` : "—");
+
+// Full lists for the "Show more" popup, keyed by name. Filled in by viewInsights().
+const listPopups = {};
+
+// Shows the first RECENT_N items. "Show more" opens a popup with the whole list.
+function previewList(key, title, items, render) {
+  listPopups[key] = { title, html: items.map(render).join("") };
+  const head = items.slice(0, RECENT_N).map(render).join("");
+  return `<ul class="entries">${head}</ul>${items.length > RECENT_N
+    ? `<button type="button" class="btn ghost more-btn" data-act="open-list" data-list="${key}">Show more (${items.length - RECENT_N})</button>`
+    : ""}`;
 }
 
-const kpi = (n, label, cls = "") => `<div class="stat ${cls}"><div class="num">${n}</div><div class="lbl">${label}</div></div>`;
-const rowLine = (label, s) => `
-  <li class="row-line">
-    <b>${esc(label)}</b>
-    <span>${s.total} logged</span>
-    <span class="h-good">${s.good} good</span>
-    <span class="h-bad">${s.bad} bad</span>
-    <span>${s.pct}%</span>
-  </li>`;
+function openList(key) {
+  const p = listPopups[key];
+  if (!p) return;
+  $("#modalBody").innerHTML = `
+    <h3>${esc(p.title)}</h3>
+    <ul class="entries scroll">${p.html}</ul>
+    <div class="modal-actions"><button type="button" class="btn ghost" data-act="close-list">Close</button></div>`;
+  $("#modal").hidden = false;
+}
 
 /* ---------- progress chart: good rate per day / week / month / year, or cumulative ---------- */
 const GRANS = [["day", "Day"], ["week", "Week"], ["month", "Month"], ["year", "Year"]];
@@ -429,7 +469,8 @@ function shortLabel(key, gran) {
 }
 
 // One bucket per period, from the start of the first logged period up to today.
-// Every calendar day counts toward its period. A day that is not logged as good is red.
+// Each calendar day counts toward its period. A day that is not logged as good is red,
+// except unlogged days that are still within GRACE_DAYS (those are left out).
 function buildSeries(gran) {
   const keys = [...state.days.keys()].sort();
   if (!keys.length) return [];
@@ -438,15 +479,17 @@ function buildSeries(gran) {
     : gran === "week" ? mondayOf(first)
     : gran === "month" ? new Date(first.getFullYear(), first.getMonth(), 1)
     : new Date(first.getFullYear(), 0, 1);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const tk = todayKey();
   const map = new Map();
-  for (let d = new Date(start); d <= today; d = addDays(d, 1)) {
+  for (let d = new Date(start); keyOf(d) <= tk; d = addDays(d, 1)) {
+    const k = keyOf(d);
+    const e = state.days.get(k);
+    if (!e && dayDiff(k, tk) < GRACE_DAYS) continue;
     const pk = periodKeyOf(d, gran);
     if (!map.has(pk)) map.set(pk, { key: pk, days: 0, good: 0 });
     const s = map.get(pk);
     s.days++;
-    if (state.days.get(keyOf(d))?.result === "good") s.good++;
+    if (e?.result === "good") s.good++;
   }
   return [...map.values()];
 }
@@ -467,6 +510,11 @@ function smoothPath(pts) {
   return d;
 }
 
+// Straight segments: used for daily pulses so each day stays at 0% or 100%.
+function linePath(pts) {
+  return pts.map(([px, py], i) => `${i ? "L" : "M"}${px.toFixed(1)} ${py.toFixed(1)}`).join(" ");
+}
+
 function progressCard() {
   const gran = state.chartGran;
   const cum = state.chartMode === "cum";
@@ -483,7 +531,7 @@ function progressCard() {
     </div>`;
 
   if (series.length < 2) {
-    return `<section class="card wide"><h3>Good rate</h3>${toggles}<p class="sub">Need at least two periods of data to draw the chart.</p></section>`;
+    return `<section class="card wide"><h3>Green/Good Rate</h3>${toggles}<p class="sub">Need at least two periods of data to draw the chart.</p></section>`;
   }
 
   // values in percent
@@ -491,14 +539,8 @@ function progressCard() {
   if (cum) {
     let g = 0, d = 0;
     values = series.map((s) => { g += s.good; d += s.days; return d ? (g / d) * 100 : 0; });
-  } else if (gran === "day") {
-    values = series.map((_, i) => {
-      const win = series.slice(Math.max(0, i - 6), i + 1);
-      const days = win.reduce((a, s) => a + s.days, 0);
-      const good = win.reduce((a, s) => a + s.good, 0);
-      return days ? (good / days) * 100 : 0;
-    });
   } else {
+    // Day: each day is 100 (clean) or 0. Week, month, year: clean days as a share of the period.
     values = series.map((s) => (s.days ? (s.good / s.days) * 100 : 0));
   }
 
@@ -507,7 +549,7 @@ function progressCard() {
   const x = (i) => L + (i * (W - L - R)) / (n - 1);
   const y = (v) => T + (1 - v / 100) * (H - T - B);
   const pts = values.map((v, i) => [x(i), y(v)]);
-  const line = smoothPath(pts);
+  const line = gran === "day" && !cum ? linePath(pts) : smoothPath(pts);
   const area = `${line} L${x(n - 1).toFixed(1)} ${H - B} L${x(0).toFixed(1)} ${H - B} Z`;
   const grid = [0, 50, 100].map((v) =>
     `<line x1="${L}" x2="${W - R}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}" class="grid-line"/>` +
@@ -521,19 +563,19 @@ function progressCard() {
 
   const last = values[n - 1];
   const note = cum
-    ? "Cumulative good rate from the first logged period to now. Unlogged days count as red."
+    ? "Cumulative green/good rate from the first logged period to now. Unlogged days count as red once they are two days old."
     : gran === "day"
-      ? "Good rate over the last 7 days, day by day. Unlogged days count as red."
-      : `Good rate of each ${gran}. Unlogged days count as red; the current ${gran} counts days so far.`;
+      ? "Each day is a pulse: 100% if it was clean, 0% if not. Unlogged days count as red once they are two days old."
+      : `Clean days as a share of each ${gran}. Unlogged days count as red once they are two days old; the current ${gran} counts days so far.`;
 
   return `
     <section class="card wide">
       <div class="chart-title">
-        <h3>${cum ? "Cumulative" : "Good rate"} · by ${gran}</h3>
+        <h3>${cum ? "Cumulative" : "Green/Good Rate"} · by ${gran}</h3>
         <b class="chart-now">${last.toFixed(1)}%</b>
       </div>
       ${toggles}
-      <svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${cum ? "Cumulative" : "Good rate"} by ${gran}">
+      <svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${cum ? "Cumulative" : "Green/Good Rate"} by ${gran}">
         <defs>
           <linearGradient id="progFill" x1="0" x2="0" y1="0" y2="1">
             <stop offset="0" stop-color="#ffe08a" stop-opacity=".55"/>
@@ -542,7 +584,7 @@ function progressCard() {
         </defs>
         ${grid}
         <path d="${area}" fill="url(#progFill)"/>
-        <path d="${line}" fill="none" stroke="#ffd77a" stroke-width="3" stroke-linecap="round"/>
+        <path d="${line}" fill="none" stroke="#ffd77a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
         ${dots}
         ${xLabels}
       </svg>
@@ -565,29 +607,33 @@ function viewInsights() {
   const all = summarize(entries);
   const ySum = summarize(entries.filter((e) => e.date.startsWith(yr)));
   const mSum = summarize(entries.filter((e) => e.date.startsWith(mo)));
-  const elapsedYear = dayDiff(`${yr}-01-01`, tk) + 1;
-  const elapsedMonth = now.getDate();
+  const yT = tally(`${yr}-01-01`, tk);
+  const mT = tally(`${mo}-01`, tk);
 
+  // Clean streaks only.
   const goodRuns = runsOf(entries, "good");
-  const badRuns = runsOf(entries, "bad");
   const curGood = goodRuns.find((r) => r.active)?.len ?? 0;
-  const curBad = badRuns.find((r) => r.active)?.len ?? 0;
-  const goodLens = goodRuns.map((r) => r.len);
-  const badLens = badRuns.map((r) => r.len);
-  const maxOf = (a) => (a.length ? Math.max(...a) : 0);
-  const minOf = (a) => (a.length ? Math.min(...a) : 0);
+  const topStreaks = [...goodRuns].sort((a, b) => b.len - a.len || b.start.localeCompare(a.start)).slice(0, 10);
+  const recentStreaks = [...goodRuns].sort((a, b) => b.start.localeCompare(a.start));
+  const streakRow = (r) => `
+    <li class="row-line">
+      <b>${r.len} day${r.len > 1 ? "s" : ""}</b>
+      <span>${fmtDM(r.start)} → ${fmtDM(r.end)}</span>
+      ${r.active ? `<span class="tag">current</span>` : ""}
+    </li>`;
 
-  const badDates = entries.filter((e) => e.result === "bad").map((e) => e.date);
-  const gaps = badDates.slice(1).map((d, i) => dayDiff(badDates[i], d) - 1);
-  const avgGap = gaps.length ? (gaps.reduce((x, y) => x + y, 0) / gaps.length).toFixed(1) : "—";
-
+  // Slips by time of day. Slips without a time: past ones are spread by PAST_UNKNOWN_SPLIT, today's and later go to Night.
   const badEntries = entries.filter((e) => e.result === "bad");
-  const buckets = ["Morning", "Afternoon", "Evening", "Night", "Unknown"];
-  const bucketCounts = Object.fromEntries(buckets.map((b) => [b, 0]));
-  badEntries.forEach((d) => bucketCounts[bucket(d.approxTime)]++);
-  const bMax = Math.max(1, ...Object.values(bucketCounts));
-  const timeBars = buckets.map((b) => `
-    <div class="bar-row"><span>${b}</span><div class="bar"><i style="width:${(bucketCounts[b] / bMax) * 100}%"></i></div><b>${bucketCounts[b]}</b></div>`).join("");
+  const timeCounts = { Morning: 0, Afternoon: 0, Evening: 0, Night: 0 };
+  badEntries.forEach((e) => {
+    const b = bucket(e.approxTime);
+    if (b !== "Unknown") { timeCounts[b]++; return; }
+    if (e.date < tk) Object.entries(PAST_UNKNOWN_SPLIT).forEach(([k, w]) => { timeCounts[k] += w; });
+    else timeCounts.Night++;
+  });
+  const tMax = Math.max(1, ...Object.values(timeCounts));
+  const timeBars = Object.keys(timeCounts).map((b) => `
+    <div class="bar-row"><span>${b}</span><div class="bar"><i style="width:${(timeCounts[b] / tMax) * 100}%"></i></div><b>${Math.round(timeCounts[b])}</b></div>`).join("");
 
   const wd = Array.from({ length: 7 }, () => ({ good: 0, bad: 0 }));
   entries.forEach((e) => { wd[(parseKey(e.date).getDay() + 6) % 7][e.result]++; });
@@ -597,23 +643,22 @@ function viewInsights() {
 
   const causeMap = new Map();
   badEntries.forEach((e) => {
-    const t = (e.rootCause || "").trim();
-    if (!t) return;
-    const k = t.toLowerCase();
-    const c = causeMap.get(k) || { text: t, n: 0 };
-    c.n++;
-    causeMap.set(k, c);
+    // A day can have several causes (the list); older days only have the single rootCause text.
+    const list = Array.isArray(e.causes) && e.causes.length ? e.causes : [e.rootCause];
+    [...new Set(list.map((c) => (c || "").trim()).filter(Boolean))].filter((c) => !HIDDEN_CAUSES.has(c)).forEach((t) => {
+      const k = t.toLowerCase();
+      const c = causeMap.get(k) || { text: t, n: 0 };
+      c.n++;
+      causeMap.set(k, c);
+    });
   });
-  const topCauses = [...causeMap.values()].sort((a, b) => b.n - a.n).slice(0, 8);
-  const causeRows = topCauses.map((c) => `<li class="row-line"><span>${esc(c.text)}</span><b>${c.n}×</b></li>`).join("");
+  const topCauses = [...causeMap.values()].sort((a, b) => b.n - a.n);
+  const causeRows = topCauses.map((c) => `<li class="row-line cause-row"><span>${esc(c.text)}</span><b>${c.n}×</b></li>`).join("");
   const avgDepth = badEntries.length
     ? (badEntries.reduce((x, e) => x + (e.chain?.length || 0), 0) / badEntries.length).toFixed(1)
     : "—";
 
-  // Month by month: every calendar day of the month counts. Days not logged as good are red.
-  // The current month counts days so far. Months with no entries still show, as all red.
-  const goodByMonth = new Map();
-  entries.forEach((e) => { if (e.result === "good") goodByMonth.set(e.date.slice(0, 7), (goodByMonth.get(e.date.slice(0, 7)) || 0) + 1); });
+  // Month by month: percentage only. Current month counts days so far.
   const tm = tk.slice(0, 7);
   const [fy, fm] = entries[0].date.split("-").map(Number);
   const monthKeys = [];
@@ -625,53 +670,29 @@ function viewInsights() {
   const monthRows = monthKeys.reverse().map((k) => {
     const [y, m] = k.split("-").map(Number);
     const isCur = k === tm;
-    const days = isCur ? now.getDate() : new Date(y, m, 0).getDate();
-    const green = goodByMonth.get(k) || 0;
-    const red = days - green;
-    const pct = ((green / days) * 100).toFixed(1);
+    const t = tally(`${k}-01`, isCur ? tk : keyOf(new Date(y, m, 0)));
     const label = new Date(y, m - 1, 1).toLocaleDateString(undefined, { month: "long", year: "numeric" });
     return `
       <li class="row-line">
         <b>${esc(label)}${isCur ? " (so far)" : ""}</b>
-        <span class="h-good">${green} green</span>
-        <span class="h-bad">${red} red</span>
-        <span>${pct}%</span>
+        <span>${pctOf(t)}</span>
       </li>`;
   }).join("");
-  // Year by year: every day of the year counts. Days not logged as good are red.
-  // The current year counts days so far.
-  const isLeap = (y) => (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
+
+  // Year by year: percentage only. Current year counts days so far.
   const firstYear = Number(entries[0].date.slice(0, 4));
   const curYear = now.getFullYear();
   const yearRows = [];
   for (let y = curYear; y >= firstYear; y--) {
     const ys = String(y);
-    const days = y === curYear ? elapsedYear : isLeap(y) ? 366 : 365;
-    const green = entries.filter((e) => e.date.startsWith(ys) && e.result === "good").length;
-    const red = days - green;
-    const pct = ((green / days) * 100).toFixed(1);
+    const t = tally(`${ys}-01-01`, y === curYear ? tk : `${ys}-12-31`);
     yearRows.push(`
       <li class="row-line">
         <b>${ys}${y === curYear ? " (so far)" : ""}</b>
-        <span class="h-good">${green} green</span>
-        <span class="h-bad">${red} red</span>
-        <span>${pct}%</span>
+        <span>${pctOf(t)}</span>
       </li>`);
   }
 
-  const goodStreakRows = [...goodRuns].sort((a, b) => b.start.localeCompare(a.start)).map((r) => `
-    <li class="row-line">
-      <b>${r.len} day${r.len > 1 ? "s" : ""}</b>
-      <span>${fmtShort(r.start)} → ${fmtShort(r.end)}</span>
-      ${r.active ? `<span class="tag">current</span>` : ""}
-    </li>`).join("");
-
-  const recentSlips = badEntries.slice().sort((a, b) => b.date.localeCompare(a.date)).slice(0, 20).map((d) => `
-    <li>
-      <div class="entry-head"><b>${fmtShort(d.date)}</b><span>${esc(fmtTime(d.approxTime))}</span></div>
-      <p class="root">${esc(d.rootCause || "—")}</p>
-      ${trail(d.chain)}
-    </li>`).join("");
 
   return `
     <div class="grid two">
@@ -681,7 +702,7 @@ function viewInsights() {
           ${kpi(all.total, "Days logged")}
           ${kpi(all.good, "Clean days", "g")}
           ${kpi(all.bad, "Slip days", "b")}
-          ${kpi(all.pct + "%", "Good rate", "gold")}
+          ${kpi(all.pct + "%", "Green/Good Rate", "gold")}
         </div>
       </section>
 
@@ -691,11 +712,9 @@ function viewInsights() {
           ${kpi(ySum.total, "Logged")}
           ${kpi(ySum.good, "Good", "g")}
           ${kpi(ySum.bad, "Bad", "b")}
-          ${kpi(ySum.pct + "%", "Good rate", "gold")}
-          ${kpi(elapsedYear - ySum.total, "Not logged")}
-          ${kpi((ySum.good / elapsedYear).toFixed(2), "Points / day")}
+          ${kpi(ySum.pct + "%", "Green/Good Rate", "gold")}
+          ${kpi(yT.notLogged, "Not logged")}
         </div>
-        <p class="sub">Points / day counts every calendar day since Jan 1, unlogged days as 0.</p>
       </section>
 
       <section class="card">
@@ -704,29 +723,24 @@ function viewInsights() {
           ${kpi(mSum.total, "Logged")}
           ${kpi(mSum.good, "Good", "g")}
           ${kpi(mSum.bad, "Bad", "b")}
-          ${kpi(mSum.pct + "%", "Good rate", "gold")}
-          ${kpi(elapsedMonth - mSum.total, "Not logged")}
-          ${kpi((mSum.good / elapsedMonth).toFixed(2), "Points / day")}
+          ${kpi(mSum.pct + "%", "Green/Good Rate", "gold")}
+          ${kpi(mT.notLogged, "Not logged")}
         </div>
       </section>
 
       <section class="card wide">
-        <h3>Streaks</h3>
+        <h3>Top clean streaks</h3>
         <div class="stat-grid">
           ${kpi(curGood, "Current clean streak", "g")}
-          ${kpi(maxOf(goodLens), "Longest clean streak", "gold")}
-          ${kpi(minOf(goodLens), "Shortest clean streak")}
-          ${kpi(curBad, "Current slip streak", "b")}
-          ${kpi(maxOf(badLens), "Longest slip streak", "b")}
-          ${kpi(avgGap, "Avg clean days between slips")}
         </div>
+        ${topStreaks.length ? previewList("top", "Top clean streaks", topStreaks, streakRow) : `<p class="sub">No clean streaks yet.</p>`}
       </section>
 
       ${progressCard()}
 
       <section class="card">
         <h3>All clean streaks (${goodRuns.length})</h3>
-        <ul class="entries scroll">${goodStreakRows || `<li class="sub">No clean streaks yet.</li>`}</ul>
+        ${goodRuns.length ? previewList("streaks", "All clean streaks", recentStreaks, streakRow) : `<p class="sub">No clean streaks yet.</p>`}
       </section>
 
       <section class="card">
@@ -754,12 +768,120 @@ function viewInsights() {
         <h3>Top root causes</h3>
         ${causeRows ? `<ul class="entries">${causeRows}</ul>` : `<p class="sub">No root causes logged yet.</p>`}
       </section>
-
-      <section class="card wide">
-        <h3>Recent slips</h3>
-        ${recentSlips ? `<ul class="entries">${recentSlips}</ul>` : `<p class="sub">No slips logged. Keep going.</p>`}
-      </section>
     </div>`;
+}
+
+const ICON = {"flame":"<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M12 2c1 4 5 6 5 11a5 5 0 0 1-10 0c0-2 1-3.5 2-4.5.3 1.8 1 2.8 2.5 3.5C11 8 11.5 5 12 2z\"/></svg>","calendar":"<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><rect x=\"3\" y=\"4\" width=\"18\" height=\"18\" rx=\"3\"/><path d=\"M16 2v4M8 2v4M3 10h18\"/></svg>","chart":"<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M3 3v18h18\"/><path d=\"M7 15l4-4 3 3 5-6\"/></svg>","compass":"<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"12\" r=\"10\"/><path d=\"M16 8l-2.5 6.5L7 17l2.5-6.5z\"/></svg>","bolt":"<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M13 2L4 14h7l-1 8 9-12h-7z\"/></svg>","sun":"<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"12\" r=\"4\"/><path d=\"M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4\"/></svg>","arrow":"<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M5 12h14M13 6l6 6-6 6\"/></svg>"};
+
+const ICON_EDIT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>';
+const ICON_SAVE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>';
+const ICON_PLUS = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>';
+
+/* ---------- my why and my doomed life: view and edit modes, saved to your own space in Firestore ---------- */
+// Older saves hold single strings (why, doomed) or plain-string triggers; these helpers read both shapes.
+const whysOf = (r) => (Array.isArray(r.whys) ? r.whys : r.why ? [r.why] : []);
+const doomsOf = (r) => (Array.isArray(r.dooms) ? r.dooms : r.doomed ? [r.doomed] : []);
+const triggersOf = (r) => (r.triggers || []).map((x) => (typeof x === "string" ? { trigger: x, action: "" } : x));
+
+// Grows a textarea to fit its text, so each block is only as tall as it needs to be.
+const fit = (el) => { el.style.height = "auto"; el.style.height = el.scrollHeight + "px"; };
+
+// One separate block for a why or a doomed moment (edit mode).
+function itemBlock(kind, text = "") {
+  const ph = kind === "why" ? "Another reason why" : "Another doomed moment";
+  return `
+    <div class="item">
+      <textarea class="field ${kind}-in" rows="1" placeholder="${ph}">${esc(text)}</textarea>
+      <button type="button" class="row-remove" data-act="remove-row" aria-label="Remove">×</button>
+    </div>`;
+}
+
+// A trigger row (edit mode): the trigger, an arrow, and what you will do about it. No labels: the headers say it.
+function triggerRow(trigger = "", action = "") {
+  return `
+    <div class="trigger-row">
+      <textarea class="field trigger-in" rows="1" placeholder="Trigger">${esc(trigger)}</textarea>
+      <div class="arrow" aria-hidden="true">${ICON.arrow}</div>
+      <textarea class="field action-in" rows="1" placeholder="What I will do">${esc(action)}</textarea>
+      <button type="button" class="row-remove" data-act="remove-row" aria-label="Remove">×</button>
+    </div>`;
+}
+
+function viewWhy() {
+  const r = state.reflection || {};
+  const edit = !!state.editingWhy;
+  const whys = whysOf(r), dooms = doomsOf(r), triggers = triggersOf(r);
+  const none = `<p class="sub">Nothing added yet.</p>`;
+  const listView = (list) => list.length
+    ? `<div class="item-list">${list.map((t) => `<div class="item-view">${esc(t)}</div>`).join("")}</div>`
+    : none;
+  const listEdit = (list, kind) => `<div id="${kind}List" class="item-list">${(list.length ? list : [""]).map((t) => itemBlock(kind, t)).join("")}</div>`;
+  const trigView = triggers.length
+    ? `<div class="trigger-list">${triggers.map((x) => `<div class="trigger-row tv-row"><div class="tv">${esc(x.trigger)}</div><div class="arrow" aria-hidden="true">${ICON.arrow}</div><div class="tv">${esc(x.action)}</div></div>`).join("")}</div>`
+    : none;
+  const trigEdit = `<div id="triggerRows" class="trigger-list">${(triggers.length ? triggers : [{ trigger: "", action: "" }]).map((x) => triggerRow(x.trigger, x.action)).join("")}</div>`;
+
+  return `
+    <div class="why-top">
+      <button type="button" class="edit-btn${edit ? " on" : ""}" data-act="toggle-edit" aria-label="${edit ? "Save" : "Edit"}" title="${edit ? "Save" : "Edit"}">${edit ? ICON_SAVE : ICON_EDIT}</button>
+    </div>
+
+    <section class="card wide">
+      <div class="sec-head"><span class="sec-icon">${ICON.compass}</span><h3>My Why</h3></div>
+      ${edit
+        ? listEdit(whys, "why") + `<button type="button" class="btn ghost add-btn" data-act="add-why">${ICON_PLUS}Add a why</button>`
+        : listView(whys)}
+    </section>
+
+    <section class="card wide">
+      <div class="sec-head"><span class="sec-icon">${ICON.bolt}</span><h3>My Triggers and Actions</h3></div>
+      <div class="trigger-head"><span>Trigger</span><span>What I Will Do</span></div>
+      ${edit ? trigEdit + `<button type="button" class="btn ghost add-btn" data-act="add-trigger">${ICON_PLUS}Add a trigger</button>` : trigView}
+    </section>
+
+    <section class="card wide">
+      <div class="sec-head"><span class="sec-icon">${ICON.sun}</span><h3>My Doomed Life</h3></div>
+      ${edit
+        ? listEdit(dooms, "doom") + `<button type="button" class="btn ghost add-btn" data-act="add-doom">${ICON_PLUS}Add a doomed moment</button>`
+        : listView(dooms)}
+    </section>`;
+}
+
+function addItem(kind) {
+  const list = $(`#${kind}List`);
+  list.insertAdjacentHTML("beforeend", itemBlock(kind));
+  const t = list.lastElementChild.querySelector("textarea");
+  t.focus();
+}
+
+function addTriggerRow() {
+  const list = $("#triggerRows");
+  list.insertAdjacentHTML("beforeend", triggerRow());
+  list.lastElementChild.querySelector("textarea").focus();
+}
+
+// The one edit button: first press opens edit mode, second press saves.
+function toggleWhyEdit() {
+  if (state.editingWhy) return saveReflection();
+  state.editingWhy = true;
+  render();
+}
+
+async function saveReflection() {
+  const whys = [...document.querySelectorAll("#whyList .why-in")].map((t) => t.value.trim()).filter(Boolean);
+  const dooms = [...document.querySelectorAll("#doomList .doom-in")].map((t) => t.value.trim()).filter(Boolean);
+  const triggers = [...document.querySelectorAll("#triggerRows .trigger-row")]
+    .map((row) => ({ trigger: row.querySelector(".trigger-in").value.trim(), action: row.querySelector(".action-in").value.trim() }))
+    .filter((x) => x.trigger || x.action);
+  try {
+    await setDoc(doc(db, "users", state.user.uid, "profile", "reflection"),
+      { whys, dooms, triggers, updatedAt: new Date().toISOString() }, { merge: true });
+    state.editingWhy = false;
+    toast("Saved.");
+    render();
+  } catch (err) {
+    toast("Save failed: " + friendly(err));
+  }
 }
 
 /* ---------- render ---------- */
@@ -769,7 +891,14 @@ function render() {
   const first = state.user.displayName ? state.user.displayName.split(" ")[0] : "";
   $("#greeting").textContent = first ? `Welcome, ${first}` : "Keep the fire lit";
   document.querySelectorAll("#tabbar button").forEach((b) => b.classList.toggle("active", b.dataset.tab === state.tab));
-  v.innerHTML = state.tab === "calendar" ? viewCalendar() : state.tab === "insights" ? viewInsights() : viewToday();
+  // Insights and My Why: every word starts with a capital letter (display only; the saved text is unchanged)
+  v.classList.toggle("tc-view", state.tab === "insights" || state.tab === "why");
+  if (state.tab === "why" && state.editingWhy && v.querySelector("#triggerRows")) return;
+  v.innerHTML = state.tab === "calendar" ? viewCalendar()
+    : state.tab === "insights" ? viewInsights()
+    : state.tab === "why" ? viewWhy()
+    : viewToday();
+  if (state.tab === "why") v.querySelectorAll("textarea").forEach(fit);
   if (state.lastTab !== state.tab) {
     v.classList.remove("fade-in");
     void v.offsetWidth;
@@ -837,6 +966,18 @@ $("#view").addEventListener("click", (e) => {
       t.classList.add("jump");
       setTimeout(() => openBad(date), 420);
       return;
+    case "toggle-edit":
+      return toggleWhyEdit();
+    case "add-why":
+      return addItem("why");
+    case "add-doom":
+      return addItem("doom");
+    case "add-trigger":
+      return addTriggerRow();
+    case "remove-row":
+      return t.closest(".item, .trigger-row")?.remove();
+    case "open-list":
+      return openList(t.dataset.list);
     case "edit":
       state.editingToday = true;
       return render();
@@ -864,6 +1005,7 @@ $("#modal").addEventListener("click", (e) => {
   if (act === "cancel") closeModal();
   if (act === "time-skip") { flow.time = "unknown"; flow.step = "why"; renderFlow(); }
   if (act === "root") finishBad();
+  if (act === "close-list") closeModal();
 });
 
 $("#modal").addEventListener("submit", (e) => {
@@ -879,3 +1021,8 @@ $("#modal").addEventListener("submit", (e) => {
     renderFlow();
   }
 });
+
+$("#view").addEventListener("input", (e) => { if (e.target.tagName === "TEXTAREA") fit(e.target); });
+
+// Text areas fit their content again when the width changes (for example, rotating the phone).
+window.addEventListener("resize", () => document.querySelectorAll("#view textarea").forEach(fit));

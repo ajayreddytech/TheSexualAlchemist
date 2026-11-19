@@ -17,64 +17,27 @@
   <link rel="stylesheet" href="/css/styles.css" />
 </head>
 <body>
-  <!-- Shared cloud shape: rounded puffs, lit from the sun's side. Used by the .cloud elements below. -->
-  <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
-    <symbol id="cloudShape" viewBox="0 0 400 160">
-      <g fill="url(#cloudFill)" filter="url(#cloudMerge)">
-        <rect x="36" y="96" width="330" height="48" rx="24"/>
-        <circle cx="92" cy="98" r="38"/>
-        <circle cx="150" cy="72" r="50"/>
-        <circle cx="222" cy="60" r="58"/>
-        <circle cx="296" cy="84" r="42"/>
-        <circle cx="342" cy="106" r="26"/>
-      </g>
-    </symbol>
-    <!-- one light across the whole cloud: sunlit top, warm peach underside -->
-    <linearGradient id="cloudFill" gradientUnits="userSpaceOnUse" x1="0" y1="40" x2="0" y2="160">
-      <stop offset="0" stop-color="#fffdf3"/>
-      <stop offset=".4" stop-color="#ffe9b8"/>
-      <stop offset=".75" stop-color="#f9c58a"/>
-      <stop offset="1" stop-color="#eba07c"/>
-    </linearGradient>
-    <!-- merges the puffs into one soft-edged silhouette (blur, then sharpen the alpha) -->
-    <filter id="cloudMerge" x="-10%" y="-20%" width="120%" height="150%">
-      <feGaussianBlur in="SourceGraphic" stdDeviation="7" result="soft"/>
-      <feColorMatrix in="soft" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 22 -9" result="shape"/>
-      <feComposite in="SourceGraphic" in2="shape" operator="in"/>
-    </filter>
-  </svg>
-
-  <!-- Golden sunrise scene: sun, clouds, lotus pond, floating light. Purely decorative. -->
-  <div class="scene" aria-hidden="true">
-    <div class="beams">
-      <i style="--a:-44deg;--dl:0s"></i>
-      <i style="--a:-28deg;--dl:-2s"></i>
-      <i style="--a:-12deg;--dl:-4s"></i>
-      <i style="--a:4deg;--dl:-1s"></i>
-      <i style="--a:19deg;--dl:-3s"></i>
-      <i style="--a:34deg;--dl:-5s"></i>
-      <i style="--a:48deg;--dl:-2.5s"></i>
-    </div>
-    <div class="sun"></div>
-    <svg class="cloud cloud-a" viewBox="0 0 400 160" aria-hidden="true"><use href="#cloudShape"/></svg>
-    <svg class="cloud cloud-b" viewBox="0 0 400 160" aria-hidden="true"><use href="#cloudShape"/></svg>
-    <svg class="cloud cloud-c" viewBox="0 0 400 160" aria-hidden="true"><use href="#cloudShape"/></svg>
-    <div class="pond"></div>
-    <div class="motes">
-      <i style="--x:6%;--dl:0s;--d:15s;--s:3px"></i>
-      <i style="--x:14%;--dl:-4s;--d:19s;--s:2px"></i>
-      <i style="--x:23%;--dl:-9s;--d:13s;--s:4px"></i>
-      <i style="--x:31%;--dl:-2s;--d:17s;--s:2px"></i>
-      <i style="--x:40%;--dl:-12s;--d:21s;--s:3px"></i>
-      <i style="--x:49%;--dl:-6s;--d:14s;--s:2px"></i>
-      <i style="--x:57%;--dl:-1s;--d:18s;--s:3px"></i>
-      <i style="--x:65%;--dl:-10s;--d:16s;--s:4px"></i>
-      <i style="--x:73%;--dl:-5s;--d:20s;--s:2px"></i>
-      <i style="--x:81%;--dl:-14s;--d:15s;--s:3px"></i>
-      <i style="--x:89%;--dl:-7s;--d:18s;--s:2px"></i>
-      <i style="--x:95%;--dl:-3s;--d:22s;--s:3px"></i>
-      <i style="--x:18%;--dl:-16s;--d:17s;--s:2px"></i>
-      <i style="--x:60%;--dl:-18s;--d:19s;--s:3px"></i>
+  <!-- Hearth & Ember background: fixed, behind everything, decorative only. -->
+  <div class="hearth" aria-hidden="true">
+    <div class="hearth-base"></div>
+    <div class="heat"></div>
+    <div class="embers">
+      <i style="--x:4%;--s:16px;--o:0.34;--sway:-10;--d:17s;--dl:0s;--f:0.24s"><b></b></i>
+      <i style="--x:11%;--s:9px;--o:0.22;--sway:12;--d:21s;--dl:-6s;--f:0.3s"><b></b></i>
+      <i style="--x:19%;--s:22px;--o:0.38;--sway:-8;--d:19s;--dl:-11s;--f:0.26s"><b></b></i>
+      <i style="--x:27%;--s:11px;--o:0.26;--sway:14;--d:15s;--dl:-3s;--f:0.34s"><b></b></i>
+      <i style="--x:35%;--s:18px;--o:0.3;--sway:-12;--d:23s;--dl:-14s;--f:0.2s"><b></b></i>
+      <i style="--x:43%;--s:8px;--o:0.2;--sway:9;--d:16s;--dl:-8s;--f:0.32s"><b></b></i>
+      <i style="--x:51%;--s:15px;--o:0.36;--sway:-14;--d:18s;--dl:-1s;--f:0.22s"><b></b></i>
+      <i style="--x:58%;--s:20px;--o:0.4;--sway:11;--d:20s;--dl:-12s;--f:0.28s"><b></b></i>
+      <i style="--x:66%;--s:10px;--o:0.24;--sway:-9;--d:14s;--dl:-5s;--f:0.36s"><b></b></i>
+      <i style="--x:74%;--s:17px;--o:0.3;--sway:13;--d:22s;--dl:-16s;--f:0.24s"><b></b></i>
+      <i style="--x:82%;--s:12px;--o:0.34;--sway:-11;--d:17s;--dl:-9s;--f:0.3s"><b></b></i>
+      <i style="--x:90%;--s:19px;--o:0.28;--sway:10;--d:19s;--dl:-4s;--f:0.2s"><b></b></i>
+      <i style="--x:96%;--s:9px;--o:0.22;--sway:-13;--d:24s;--dl:-18s;--f:0.34s"><b></b></i>
+      <i style="--x:15%;--s:14px;--o:0.2;--sway:15;--d:18s;--dl:-19s;--f:0.26s"><b></b></i>
+      <i style="--x:62%;--s:13px;--o:0.3;--sway:-7;--d:16s;--dl:-13s;--f:0.32s"><b></b></i>
+      <i style="--x:38%;--s:21px;--o:0.25;--sway:8;--d:20s;--dl:-7s;--f:0.28s"><b></b></i>
     </div>
   </div>
 
@@ -111,9 +74,10 @@
     <main id="view" class="view"></main>
 
     <nav id="tabbar" class="tabbar" aria-label="Main">
-      <button type="button" data-tab="today" class="active">Today</button>
-      <button type="button" data-tab="calendar">Calendar</button>
-      <button type="button" data-tab="insights">Insights</button>
+      <button type="button" data-tab="today" class="active" aria-label="Today" title="Today"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2c1 4 5 6 5 11a5 5 0 0 1-10 0c0-2 1-3.5 2-4.5.3 1.8 1 2.8 2.5 3.5C11 8 11.5 5 12 2z"/></svg></span></button>
+      <button type="button" data-tab="calendar" aria-label="Calendar" title="Calendar"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="3"/><path d="M16 2v4M8 2v4M3 10h18"/></svg></span></button>
+      <button type="button" data-tab="insights" aria-label="Insights" title="Insights"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/></svg></span></button>
+      <button type="button" data-tab="why" aria-label="My Why" title="My Why"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M16 8l-2.5 6.5L7 17l2.5-6.5z"/></svg></span></button>
     </nav>
   </div>
 

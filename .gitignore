@@ -3,6 +3,8 @@ node_modules/
 
 # Personal habit data: never publish. Keep these local.
 scripts/history.json
+scripts/causes.json
+scripts/reflection.json
 scripts/*.raw.txt
 scripts/raw*.txt
 
