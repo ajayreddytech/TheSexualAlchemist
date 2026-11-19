@@ -251,7 +251,8 @@ function statusCard(e) {
 
 function weekStrip() {
   const cells = [];
-  for (let i = 6; i >= 0; i--) {
+  // today first on the left, then the six days before it
+  for (let i = 0; i <= 6; i++) {
     const d = new Date();
     d.setDate(d.getDate() - i);
     const k = keyOf(d);
