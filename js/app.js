@@ -200,6 +200,7 @@ function renderFlow() {
     ${trail(flow.chain)}
     <h2>${question}</h2>
     <form id="whyForm" class="stack">
+      ${causePicker()}
       <textarea id="whyInput" class="input" rows="3" placeholder="Be honest. Write what was really going on." required></textarea>
       <div class="modal-actions">
         <button type="button" class="btn ghost" data-act="cancel">Cancel</button>
@@ -209,6 +210,17 @@ function renderFlow() {
       </div>
     </form>`;
   setTimeout(() => $("#whyInput")?.focus(), 60);
+}
+
+// Drop-down of the top root causes from Insights. Picking one fills the reason box below.
+function causePicker() {
+  const causes = rankCauses([...state.days.values()].filter((e) => e.result === "bad"));
+  if (!causes.length) return "";
+  return `
+    <select id="causePick" class="input" aria-label="Pick a common root cause">
+      <option value="">Pick a common root cause…</option>
+      ${causes.map((c) => `<option value="${esc(c.text)}">${esc(c.text)} (${c.n}×)</option>`).join("")}
+    </select>`;
 }
 
 function finishBad() {
@@ -363,6 +375,79 @@ const GRACE_DAYS = 2;   // an unlogged day counts as "not logged" only once it i
 const RECENT_N = 3;
 // Causes left out of Top root causes (the data stays; only the list hides them).
 const HIDDEN_CAUSES = new Set(["Relapse, no trigger noted", "Unclear note", "Heavy lunch", "Sleeping in the evening"]);     // lists show this many; the rest sit behind a dropdown
+// Very similar causes that are shown as one line (in Top root causes and in the reason picker).
+// The count is the number of bad days that had any of them.
+const CAUSE_GROUPS = [
+  { label: "Triggering movies, shows or sexual content", members: ["Triggering movies or shows", "Sexual content (soft porn, nudes, erotic dream)"] },
+  { label: "Intrusive thoughts or compulsive urges", members: ["Intrusive thoughts (past love)", "Compulsive urge"] },
+];
+const GROUP_OF = new Map(CAUSE_GROUPS.flatMap((g) => g.members.map((m) => [m.toLowerCase(), g.label])));
+// A cause that is no longer shown: each time it is logged, it counts toward these causes instead.
+const EXTRA_COUNTS = [
+  { match: /slept in the noon/i, labels: ["Noon nap", "Sleep disruption (can't sleep, woke early)"] },
+];
+
+// Ranks causes across the given bad days, most days first.
+// Buckets for reasons written in free text. Checked in this order; the first match wins.
+// A reason that matches none of them stays as it was written.
+const BUCKET_RULES = [
+  [/sexual|movie|shows?\b|nsfw|porn|nude|erotic/i, "Triggering movies, shows or sexual content"],
+  [/triggering person|person/i, "Triggering person (in person or online)"],
+  [/divert/i, "Didn't divert at first thought"],
+  [/urge|intrusive|thought/i, "Intrusive thoughts or compulsive urges"],
+  [/sleep|woke|asleep/i, "Sleep disruption (can't sleep, woke early)"],
+  [/\bnap\b/i, "Noon nap"],
+  [/late-night|screen|laptop/i, "Late-night screens (laptop, blue light)"],
+  [/phone|scroll|web/i, "Phone or web scrolling"],
+  [/idle|lying|lazy|laziness|lazily|\bbed\b/i, "Idle time or lying on bed"],
+  [/mood|dysphoria|frustrat/i, "Low mood (dysphoria, frustration)"],
+  [/practice|mantra|japa/i, "Skipped practice (mantra, japa, simulations)"],
+];
+const bucketOf = (t) => (BUCKET_RULES.find(([re]) => re.test(t)) || [null, t])[1];
+
+// Words that do not say what a cause is about. Used to find causes that are worded alike.
+const CAUSE_STOP = new Set(["the", "and", "was", "were", "with", "for", "that", "this", "from", "into", "about", "just", "some", "very", "lot", "something", "not", "but", "when", "then", "had", "have", "got", "out", "after", "before", "on", "in", "at", "of", "to", "a", "an", "i", "my", "me", "it", "is", "be", "or", "so", "as", "by", "up", "did", "do", "didn", "there", "also"]);
+const causeWords = (t) => new Set(t.toLowerCase().replace(/[^a-z\s]/g, " ").split(/\s+/)
+  .filter((w) => w.length > 2 && !CAUSE_STOP.has(w))
+  .map((w) => w.replace(/(ing|ed|es|s)$/, "")));
+// Two causes are merged when at least half of their words (ignoring small words) match.
+const alike = (a, b) => {
+  const shared = [...a].filter((w) => b.has(w)).length;
+  const all = new Set([...a, ...b]).size;
+  return all > 0 && shared / all >= 0.5;
+};
+
+// Ranks causes across the given bad days, most days first. Similar causes are merged into one entry,
+// which is named after its most frequent member and counts every day that had any of them.
+function rankCauses(list) {
+  const found = new Map(); // lowercase label -> { text, days }
+  list.forEach((e, day) => {
+    // Every reason logged on a day counts: the causes list, each "why" answer, and the root cause.
+    const raw = [...(Array.isArray(e.causes) ? e.causes : []), ...(e.chain || []).map((s) => s.a), e.rootCause];
+    const names = new Map();
+    // A reason that lists several causes separated by ";" is split into its parts.
+    raw.flatMap((c) => (c || "").split(";")).map((c) => c.trim()).filter((c) => c && !HIDDEN_CAUSES.has(c)).forEach((t) => {
+      const extra = EXTRA_COUNTS.find((x) => x.match.test(t));
+      if (extra) { extra.labels.forEach((l) => names.set(l.toLowerCase(), l)); return; }
+      const label = GROUP_OF.get(t.toLowerCase()) || bucketOf(t);
+      names.set(label.toLowerCase(), label);
+    });
+    names.forEach((text, k) => {
+      const f = found.get(k) || { text, days: new Set() };
+      f.days.add(day);
+      found.set(k, f);
+    });
+  });
+
+  const merged = [];
+  [...found.values()].sort((a, b) => b.days.size - a.days.size).forEach((f) => {
+    const words = causeWords(f.text);
+    const into = merged.find((m) => alike(m.words, words));
+    if (into) { f.days.forEach((d) => into.days.add(d)); return; }
+    merged.push({ text: f.text, words, days: new Set(f.days) });
+  });
+  return merged.map((m) => ({ text: m.text, n: m.days.size })).sort((a, b) => b.n - a.n);
+}
 // Past slips logged without a time are spread over the day like this. Slips from today on go to Night.
 const PAST_UNKNOWN_SPLIT = { Night: 0.55, Morning: 0.25, Afternoon: 0.1, Evening: 0.1 };
 
@@ -593,6 +678,33 @@ function progressCard() {
     </section>`;
 }
 
+// Column chart of the top root causes, largest first. The x-axis is the rank (the names are too long);
+// hovering or tapping a column shows its cause in the line above the chart. The y-axis is the number of days.
+function causeBars(list) {
+  const max = Math.max(1, ...list.map((c) => c.n));
+  const pct = (v) => Math.round((v / max) * 100); // 0 to 100, scaled to the tallest bar
+  const ticks = [...new Set([max, Math.round(max / 2), 0])];
+  const grid = ticks.map((v) => `<i class="cc-grid" style="--p:${pct(v)}"></i><span class="cc-y" style="--p:${pct(v)}">${v}</span>`).join("");
+  // Shades of red: the most frequent cause is the darkest, the least frequent the lightest.
+  const shade = (i) => (list.length > 1 ? 34 + (i / (list.length - 1)) * 46 : 34);
+  const cols = list.map((c, i) => `
+    <button type="button" class="col" data-name="${esc(c.text)}" data-n="${c.n}" style="--h:${pct(c.n)};--d:${i * 90}ms;--l:${shade(i).toFixed(0)}%" aria-label="${esc(c.text)}: ${c.n} time${c.n > 1 ? "s" : ""}">
+      <span class="col-bar"></span>
+      <span class="col-val">${c.n}</span>
+      <span class="col-tip">${esc(c.text)}<small>${c.n} time${c.n > 1 ? "s" : ""}</small></span>
+    </button>`).join("");
+  const names = list.map((c) => `<span class="cc-name" title="${esc(c.text)}">${esc(c.text)}</span>`).join("");
+  return `
+    <p id="causeInfo" class="cc-info">Hover or tap a bar to see its root cause.</p>
+    <div class="cc">
+      <div class="cc-body">
+        <span class="cc-ytitle">Times</span>
+        <div class="cc-area">${grid}${cols}</div>
+        <div class="cc-names">${names}</div>
+      </div>
+    </div>`;
+}
+
 function viewInsights() {
   const entries = [...state.days.values()].sort((a, b) => a.date.localeCompare(b.date));
   if (!entries.length) {
@@ -642,18 +754,7 @@ function viewInsights() {
   const wdBars = wd.map((w, i) => `
     <div class="bar-row"><span>${WEEKDAYS_FULL[i].slice(0, 3)}</span><div class="bar"><i style="width:${(w.bad / wdMax) * 100}%"></i></div><b>${w.bad}/${w.good + w.bad}</b></div>`).join("");
 
-  const causeMap = new Map();
-  badEntries.forEach((e) => {
-    // A day can have several causes (the list); older days only have the single rootCause text.
-    const list = Array.isArray(e.causes) && e.causes.length ? e.causes : [e.rootCause];
-    [...new Set(list.map((c) => (c || "").trim()).filter(Boolean))].filter((c) => !HIDDEN_CAUSES.has(c)).forEach((t) => {
-      const k = t.toLowerCase();
-      const c = causeMap.get(k) || { text: t, n: 0 };
-      c.n++;
-      causeMap.set(k, c);
-    });
-  });
-  const topCauses = [...causeMap.values()].sort((a, b) => b.n - a.n);
+  const topCauses = rankCauses(badEntries);
   const causeRows = topCauses.map((c) => `<li class="row-line cause-row"><span>${esc(c.text)}</span><b>${c.n}×</b></li>`).join("");
   const avgDepth = badEntries.length
     ? (badEntries.reduce((x, e) => x + (e.chain?.length || 0), 0) / badEntries.length).toFixed(1)
@@ -768,6 +869,11 @@ function viewInsights() {
       <section class="card">
         <h3>Top root causes</h3>
         ${causeRows ? `<ul class="entries">${causeRows}</ul>` : `<p class="sub">No root causes logged yet.</p>`}
+      </section>
+
+      <section class="card wide">
+        <h3>Root causes chart</h3>
+        ${topCauses.length ? causeBars(topCauses) : `<p class="sub">No root causes logged yet.</p>`}
       </section>
     </div>`;
 }
@@ -1009,6 +1115,13 @@ $("#modal").addEventListener("click", (e) => {
   if (act === "close-list") closeModal();
 });
 
+$("#modal").addEventListener("change", (e) => {
+  if (e.target.id !== "causePick" || !e.target.value) return;
+  const box = $("#whyInput");
+  box.value = e.target.value;
+  box.focus();
+});
+
 $("#modal").addEventListener("submit", (e) => {
   e.preventDefault();
   if (e.target.id === "timeForm") {
@@ -1021,6 +1134,25 @@ $("#modal").addEventListener("submit", (e) => {
     flow.chain.push({ q: flow.chain.length ? WHY_NEXT : WHY_FIRST, a });
     renderFlow();
   }
+});
+
+// Root causes chart: hovering or tapping a column names its cause.
+$("#view").addEventListener("pointerout", (e) => {
+  // Mouse only: when the pointer leaves a bar, its tooltip goes away. (Touch keeps the tapped bar selected.)
+  const c = e.target.closest(".col");
+  if (c && e.pointerType === "mouse" && !c.contains(e.relatedTarget)) c.classList.remove("on");
+});
+
+$("#view").addEventListener("pointerover", (e) => {
+  const c = e.target.closest(".col");
+  const info = $("#causeInfo");
+  if (!c || !info) return;
+  document.querySelectorAll("#view .col.on").forEach((x) => x.classList.remove("on"));
+  c.classList.add("on");
+  const n = Number(c.dataset.n);
+  const b = document.createElement("b");
+  b.textContent = c.dataset.name;
+  info.replaceChildren(b, document.createTextNode(` · ${n} day${n > 1 ? "s" : ""}`));
 });
 
 $("#view").addEventListener("input", (e) => { if (e.target.tagName === "TEXTAREA") fit(e.target); });
