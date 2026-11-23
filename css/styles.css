@@ -272,6 +272,12 @@ button { font: inherit; }
 .col-tip { position: absolute; left: 50%; bottom: calc(var(--h) * 2px + 30px); transform: translate(-50%, 6px); width: max-content; max-width: 200px; padding: 8px 10px; border-radius: 10px; background: #2a1016; border: 1px solid rgba(255, 150, 160, .35); box-shadow: 0 10px 24px -8px rgba(0, 0, 0, .6); color: var(--text); font-size: .78rem; line-height: 1.35; font-weight: 500; text-align: center; white-space: normal; opacity: 0; pointer-events: none; transition: opacity .2s, transform .25s var(--ease); z-index: 5; }
 .col-tip small { display: block; margin-top: 3px; color: #ffb3bd; font-weight: 700; }
 .col:hover .col-tip, .col:focus-visible .col-tip, .col.on .col-tip { opacity: 1; transform: translate(-50%, 0); }
+/* Tooltips at the two ends sit inside the chart, so they do not push the page wider than the screen */
+.col:nth-child(-n+2) .col-tip, .col:nth-last-child(-n+3) .col-tip { transform: translate(0, 6px); }
+.col:nth-child(-n+2) .col-tip { left: 0; }
+.col:nth-last-child(-n+3) .col-tip { left: auto; right: 0; }
+.col:nth-child(-n+2):hover .col-tip, .col:nth-child(-n+2).on .col-tip, .col:nth-last-child(-n+3):hover .col-tip, .col:nth-last-child(-n+3).on .col-tip { transform: translate(0, 0); }
+.grid.two > * { min-width: 0; }
 .col-bar::after { content: ""; position: absolute; inset: 0; background: linear-gradient(110deg, transparent 30%, rgba(255, 255, 255, .35) 50%, transparent 70%); background-size: 250% 100%; animation: shine 3.2s ease-in-out infinite; animation-delay: calc(var(--d) + 1s); }
 .col-val { position: absolute; left: 0; right: 0; bottom: calc(var(--h) * 2px + 6px); text-align: center; font-weight: 700; font-size: .8rem; color: var(--text); transition: color .2s; animation: fadeUp .5s both; animation-delay: calc(var(--d) + .7s); pointer-events: none; }
 .col:hover .col-bar, .col.on .col-bar { filter: brightness(1.18); box-shadow: 0 14px 30px -10px rgba(255, 150, 80, .8), inset 0 1px 0 rgba(255, 255, 255, .45); }

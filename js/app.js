@@ -391,6 +391,7 @@ const EXTRA_COUNTS = [
 // Buckets for reasons written in free text. Checked in this order; the first match wins.
 // A reason that matches none of them stays as it was written.
 const BUCKET_RULES = [
+  [/nsfw browsing/i, "Casual NSFW browsing"],
   [/sexual|movie|shows?\b|nsfw|porn|nude|erotic/i, "Triggering movies, shows or sexual content"],
   [/triggering person|person/i, "Triggering person (in person or online)"],
   [/divert/i, "Didn't divert at first thought"],
